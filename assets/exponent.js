@@ -271,10 +271,13 @@
       band = ['prime', (tiny ? 'prime' : 'probable prime') + ' · 0 primality tests remaining'];
       var digitsBig = S.digits(n) > 40000;
       if (tiny) {
-        line = 'Checked directly' + (pInfo.note ? '; ' + esc(pInfo.note) : '');
+        line = 'Checked directly' + (pInfo.note && !/^checked directly$/i.test(pInfo.note) ? '; ' + esc(pInfo.note) : '');
         tests = [['Proof', 'trial division', state('Prime', 'prime')]];
       } else {
-        line = 'PRP-3 result ' + esc(pInfo.found) + ' UTC · ' + esc(pInfo.who || site.credit) + (pInfo.program ? ' · ' + esc(pInfo.program) : '');
+        // a prime known before this project: name who found it first, then this project's re-test
+        var before = pInfo.discoverer && pInfo.discoverer !== (pInfo.who || site.credit);
+        line = (before ? 'First found by ' + esc(pInfo.discoverer) + (pInfo.discovered ? ', ' + esc(pInfo.discovered) : '') + ' · PRP-3 re-test ' : 'PRP-3 result ') +
+          esc(pInfo.found) + ' UTC · ' + esc(pInfo.who || site.credit) + (pInfo.program ? ' · ' + esc(pInfo.program) : '');
         tests = [['PRP-3', 'probable prime', state('Probable prime', 'prime')],
           pInfo.proof_power ? ['Proof', 'power ' + pInfo.proof_power, state('Kept · not certified yet', 'muted')] : ['Proof', '—', '—']];
       }
@@ -444,7 +447,7 @@
     } else if ((kind === 'sieve' || kind === 'future') && info.sp) {
       var sfu = info.shard && info.shard.sfu, finder = sfu && sfu[n] !== undefined && info.shard.users[sfu[n]];
       out.push(factorRow(n, String(info.sp), kind === 'sieve' && row.sieve && row.sieve.end ? S.day(row.sieve.end) : '—', kind === 'sieve' ? (finder ? 'Sieve, uploaded' : 'Sieve') : 'Trial division (this page)',
-        kind === 'sieve' ? finder || ctx.site.credit : '—', 4000));
+        kind === 'sieve' ? finder || (info.sp >= 1e7 ? ctx.site.credit : '—') : '—', 4000));
       sum = '1 factor · ' + Math.log2(info.sp).toFixed(1) + ' of ' + fmt(n) + ' bits known';
     } else if (kind === 'even') {
       sum = 'algebraic';

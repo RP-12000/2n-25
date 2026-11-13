@@ -6,7 +6,7 @@ another copy given with --archive), and writes the JSON files that the pages loa
 
   data/summary.json   totals, search frontier, latest results, daily counts
   data/ranges.json    one row per 0.2M of n below 10^7
-  data/primes.json    every known n
+  data/primes.json    every known n, with who first found it
   data/sieve.json     P-1 factor sizes and survivor constants
   data/site.json      content/site.json (plans, notes), copied as is
   data/n/<x.x>.json   one file per 0.1M of n: sieve survivors and their P-1 / PRP records
@@ -1040,14 +1040,25 @@ def build(archive_root, out_dir, content_path):
     # ---- primes ----
     ranks = site.get("ranks", {})
     prime_notes = site.get("prime_notes", {})
+    # who first found each prime: below `below`, someone before this project (PRPTop, or `unknown`)
+    disc = site.get("discoverers", {})
+    disc_below, disc_unknown, disc_n = disc.get("below", 0), disc.get("unknown", "anonymous"), disc.get("n", {})
+    for k in disc_n:
+        if int(k) not in arc.prime_records and int(k) not in small_primes:
+            notes.add("discoverers in content/site.json lists an n that is not a known prime", f"n = {k}")
     primes = []
     for n in primes_all:
         rec = arc.prime_records.get(n, {})
+        if n < disc_below:
+            by, when = (disc_n.get(str(n)) or [disc_unknown, ""])[:2]
+        else:
+            by, when = rec.get("who", credit), rec.get("found", "")
         primes.append({
             "n": n, "digits": digits_of(n), "found": rec.get("found", ""), "fft": rec.get("fft", 0),
             "proof_power": rec.get("proof_power", 0), "program": rec.get("program", ""),
             "who": rec.get("who", credit if rec else ""),
             "how": "PRP-3" if rec else "trial division",
+            "discoverer": by, "discovered": when,     # first found by, and when (year-month before this project)
             "rank": ranks.get("values", {}).get(str(n), ""),
             "note": prime_notes.get(str(n)) or small_primes.get(n, {}).get("note", ""),
         })

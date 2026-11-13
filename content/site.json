@@ -1,6 +1,6 @@
 {
-  "_about": "Hand-written facts and plans for the website. tools/build.py copies this into data/site.json. Edit it when plans change, then rebuild. confirmed_primes: n of probable primes reported in uploads that you have re-tested; until then the site shows them as being verified. accepted_sieve_uploads: ids of uploaded sieve slices (Submissions/<id>/TF) to count toward the sieve depth even though they found fewer factors than expected; their checked factors strike n out either way. status_since: the Status page draws the frontier and PRP results per day from this date; the History page keeps the whole story.",
-  "credit": "RP-12000",
+  "_about": "Hand-written facts and plans for the website. tools/build.py copies this into data/site.json. Edit it when plans change, then rebuild. confirmed_primes: n of probable primes reported in uploads that you have re-tested; until then the site shows them as being verified. accepted_sieve_uploads: ids of uploaded sieve slices (Submissions/<id>/TF) to count toward the sieve depth even though they found fewer factors than expected; their checked factors strike n out either way. status_since: the Status page draws the frontier and PRP results per day from this date; the History page keeps the whole story. credit: the name the project's own results and factors are credited to; factors below 10^7, which any program finds by itself, carry no name. discoverers: who first found each prime below `below` and when (year-month), from PRPTop (Henri & Renaud Lifchitz's PRP Records); a prime below `below` that is not listed is credited to `unknown`; from `below` up, every prime was first found by this project.",
+  "credit": "Kelvinizer",
   "oeis": "A379020",
   "links": {
     "repo": "https://github.com/RP-12000/2n-25",
@@ -195,6 +195,45 @@
     "2020893": "first found by this project",
     "2421175": "first found by this project · largest known"
   },
+  "discoverers": {
+    "source": "PRPTop (Henri & Renaud Lifchitz's PRP Records), checked 2026-11-13",
+    "below": 600000,
+    "unknown": "anonymous",
+    "n": {
+      "55557": [
+        "Henri Lifchitz",
+        "2005-04"
+      ],
+      "60415": [
+        "Henri Lifchitz",
+        "2005-05"
+      ],
+      "63589": [
+        "Henri Lifchitz",
+        "2005-05"
+      ],
+      "69463": [
+        "Henri Lifchitz",
+        "2005-05"
+      ],
+      "75949": [
+        "Henri Lifchitz",
+        "2005-05"
+      ],
+      "98265": [
+        "Henri Lifchitz",
+        "2005-06"
+      ],
+      "212295": [
+        "Lelio R Paula",
+        "2011-08"
+      ],
+      "416773": [
+        "Lelio R Paula",
+        "2015-09"
+      ]
+    }
+  },
   "confirmed_primes": [],
   "accepted_sieve_uploads": [],
   "ranks": {
@@ -210,7 +249,7 @@
   "timeline": [
     [
       "2024-12-13",
-      "Search starts; 25 primes from n = 33 to 212,295 the first evening. A379020 created."
+      "Search starts; the first evening re-finds the 25 known primes from n = 33 to 212,295. A379020 created."
     ],
     [
       "2024-12-31",

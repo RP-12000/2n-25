@@ -32,7 +32,10 @@
     el('hist-frontier').innerHTML = S.frontierChart(series, {
       d0: d0, d1: d1, y0: 0, y1: top, yStep: 1e6, today: today, frontier: sum.frontier, frontierDate: sum.frontier_date,
       pause: site.pause, startLabel: 'start ' + start, todayLabel: 'today',
-      primes: primes.filter(function (p) { return p.n >= 200000; }).map(function (p) { return { n: p.n, found: p.found, label: p.n >= 1e6 }; }),
+      primes: primes.filter(function (p) { return p.n >= 200000; }).map(function (p) {
+        var known = p.discoverer && p.discoverer !== site.credit;
+        return { n: p.n, found: p.found, label: p.n >= 1e6, known: known, by: known ? p.discoverer + (p.discovered ? ', ' + p.discovered : '') : '' };
+      }),
       aria: 'Search frontier from ' + start + ' to ' + fmt(sum.frontier) + ' on ' + sum.frontier_date + ', with the primes found on the way.'
     });
     el('hist-pause-key').textContent = site.pause ? 'Pause, ' + site.pause.from + ' → ' + site.pause.to : 'Pause';
@@ -55,8 +58,10 @@
     var first = primes.filter(function (p) { return S.day(p.found) === start; });
     var firstDay = prp.length && prp[0][0] === start ? prp[0][1] : 0;
     if (first.length) {
-      tiles.push(['First evening', plural(first.length, 'prime'), 'prime', esc(start) + ': n = ' + fmt(first[0].n) + ' to ' + fmt(first[first.length - 1].n) +
-        (firstDay ? ' among ' + fmt(firstDay) + ' PRP tests' : '')]);
+      var ns = first.map(function (p) { return p.n; }).sort(function (a, b) { return a - b; });
+      var allKnown = first.every(function (p) { return p.discoverer && p.discoverer !== site.credit; });
+      tiles.push(['First evening', plural(first.length, allKnown ? 'known prime' : 'prime'), 'prime', esc(start) + ': ' + (allKnown ? 're-found ' : '') +
+        'n = ' + fmt(ns[0]) + ' to ' + fmt(ns[ns.length - 1]) + (firstDay ? ' among ' + fmt(firstDay) + ' PRP tests' : '')]);
     }
     var busy = prp.reduce(function (m, d) { return d[1] > m[1] ? d : m; }, ['', 0]);
     if (busy[1]) tiles.push(['Busiest day', fmt(busy[1]), '', 'PRP results on ' + esc(busy[0])]);

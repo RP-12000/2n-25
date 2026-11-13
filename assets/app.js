@@ -328,7 +328,7 @@
     return out;
   };
   /* Frontier over time. o: d0, d1 (day numbers), y0, y1, yStep, frontier, frontierDate, today (day number),
-     pause {from, to, label}, primes [{n, found}] to mark on the line, note (shown when nothing changed), label for "today" */
+     pause {from, to, label}, primes [{n, found, label, known, by}] to mark on the line (known: first found by someone else), note (shown when nothing changed), label for "today" */
   Site.frontierChart = function (series, o) {
     var top = 22, bottom = 226, left = 64, right = 1140;
     var X = function (d) { return left + (d - o.d0) / (o.d1 - o.d0) * (right - left); };
@@ -368,7 +368,8 @@
       var d = Site.dayNumber(p.found);
       if (d < o.d0 || d > o.d1 || p.n < o.y0) return;
       var x = X(d), y = Y(Math.min(p.n, o.y1));
-      out.push('<circle class="dot prime ring" cx="' + r1(x) + '" cy="' + r1(y) + '" r="4.5"><title>' + fmt(p.n) + ' · ' + esc(Site.day(p.found)) + '</title></circle>');
+      out.push('<circle class="dot prime ring' + (p.known ? ' known' : '') + '" cx="' + r1(x) + '" cy="' + r1(y) + '" r="4.5"><title>' + fmt(p.n) + ' · ' + esc(Site.day(p.found)) +
+        (p.known ? ' · known before: ' + esc(p.by) : '') + '</title></circle>');
       if (p.label) out.push('<text class="prime" x="' + r1(x + 8) + '" y="' + r1(y + 15) + '">' + fmt(p.n) + '</text>');
     });
     out.push('<circle class="dot" cx="' + r1(last[0]) + '" cy="' + r1(last[1]) + '" r="4"></circle>');

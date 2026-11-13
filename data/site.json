@@ -1,5 +1,5 @@
 {
- "credit": "RP-12000",
+ "credit": "Kelvinizer",
  "oeis": "A379020",
  "links": {
   "repo": "https://github.com/RP-12000/2n-25",
@@ -194,6 +194,45 @@
   "2020893": "first found by this project",
   "2421175": "first found by this project · largest known"
  },
+ "discoverers": {
+  "source": "PRPTop (Henri & Renaud Lifchitz's PRP Records), checked 2026-11-13",
+  "below": 600000,
+  "unknown": "anonymous",
+  "n": {
+   "55557": [
+    "Henri Lifchitz",
+    "2005-04"
+   ],
+   "60415": [
+    "Henri Lifchitz",
+    "2005-05"
+   ],
+   "63589": [
+    "Henri Lifchitz",
+    "2005-05"
+   ],
+   "69463": [
+    "Henri Lifchitz",
+    "2005-05"
+   ],
+   "75949": [
+    "Henri Lifchitz",
+    "2005-05"
+   ],
+   "98265": [
+    "Henri Lifchitz",
+    "2005-06"
+   ],
+   "212295": [
+    "Lelio R Paula",
+    "2011-08"
+   ],
+   "416773": [
+    "Lelio R Paula",
+    "2015-09"
+   ]
+  }
+ },
  "confirmed_primes": [],
  "accepted_sieve_uploads": [],
  "ranks": {
@@ -209,7 +248,7 @@
  "timeline": [
   [
    "2024-12-13",
-   "Search starts; 25 primes from n = 33 to 212,295 the first evening. A379020 created."
+   "Search starts; the first evening re-finds the 25 known primes from n = 33 to 212,295. A379020 created."
   ],
   [
    "2024-12-31",

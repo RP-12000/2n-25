@@ -30,11 +30,12 @@
     var frontier = sum.frontier, last = P[P.length - 1];
     var act = site.active || { lo: frontier, hi: 5000000 };
     var bigCount = P.filter(function (p) { return p.digits >= 10000; }).length;
+    var own = P.filter(function (p) { return p.discoverer && p.discoverer === site.credit; }).length;
     document.getElementById('primes-lede').innerHTML = P.length + ' values of n make 2<sup>n</sup> − 25 prime or probable prime (OEIS <a href="' +
       esc(site.links && site.links.oeis || 'https://oeis.org/A379020') + '">' + esc(site.oeis || 'A379020') + '</a>). Every odd n below ' + fmt(frontier) +
       ' has been sieved and tested, so the list is complete up to there.';
     var tiles = [
-      ['Known', fmt(P.length), 'prime', bigCount + ' of them have ≥ 10,000 digits'],
+      ['Known', fmt(P.length), 'prime', bigCount + ' with ≥ 10,000 digits' + (own ? ' · ' + own + ' first found by ' + esc(site.credit) : '')],
       ['Largest', last ? fmt(last.n) : '—', '', last ? fmt(last.digits) + ' digits' + (last.found ? ' · found ' + esc(S.day(last.found)) : '') : ''],
       ['Complete up to', fmt(frontier), '', last && frontier > last.n + 2 ? 'no prime in ' + fmt(last.n + 2) + ' – ' + fmt(frontier - 1) : 'every odd n below is resolved'],
       ['Next one below 10<sup>7</sup>', Math.round(M.pAny(frontier, 1e7) * 100) + '%', 'accent',
@@ -141,21 +142,25 @@
   function renderTable() {
     var P = ctx.primes.filter(function (p) { return !state.big || p.digits >= 10000; });
     if (state.desc) P = P.slice().reverse();
-    var w = widest(ctx.primes), credit = ctx.site.credit;
+    var w = widest(ctx.primes), credit = ctx.site.credit, dash = '<span class="muted">—</span>';
     var rows = P.map(function (p) {
-      var who = p.who && p.who !== credit ? 'by ' + esc(p.who) : '';
-      var note = [esc(p.note || ''), who].filter(Boolean).join(' · ');
+      var note = esc(p.note || '');
+      var when = p.discovered ? esc(p.discovered.length > 7 ? S.minute(p.discovered) : p.discovered) : dash;
       return '<tr><td class="r muted">' + p.k + '</td><td class="r"><a href="exponent.html?n=' + p.n + '">' + fmt(p.n) + '</a></td><td class="r">' + fmt(p.digits) +
-        '</td><td>' + (p.found ? esc(S.minute(p.found)) : '<span class="muted">—</span>') + '</td><td class="r">' + (p.fft ? S.fft(p.fft) : '—') +
+        '</td><td>' + when + '</td><td class="text' + (p.discoverer === credit ? ' prime-text' : '') + '">' + (p.discoverer ? esc(p.discoverer) : dash) +
+        '</td><td class="r">' + (p.fft ? S.fft(p.fft) : '—') +
         '</td><td class="r">' + (p.proof_power ? 'power ' + p.proof_power : '—') + '</td><td class="r">' + (p.rank ? esc(p.rank) : '—') +
         '</td><td class="r' + (w && p.n === w.n ? ' prime-text" style="font-weight:600' : '') + '">' + (p.ratio ? '× ' + p.ratio.toFixed(p.ratio < 1.1 ? 3 : 2) : '—') +
         '</td><td class="text">' + (note || '<span class="muted">' + esc(p.how || '') + '</span>') + '</td></tr>';
     });
     document.getElementById('prime-table').innerHTML = '<table class="data"><thead><tr><th class="r">#</th><th class="r">n</th><th class="r">Digits</th>' +
-      '<th>Found (UTC)</th><th class="r">FFT</th><th class="r">Proof</th><th class="r">Top PRP</th><th class="r">× prev</th><th class="text">Note</th></tr></thead><tbody>' +
+      '<th>First found (UTC)</th><th class="text">Found by</th><th class="r">FFT</th><th class="r">Proof</th><th class="r">Top PRP</th><th class="r">× prev</th><th class="text">Note</th></tr></thead><tbody>' +
       rows.join('') + '</tbody></table>';
-    var rd = ctx.doc.rank_date;
+    var rd = ctx.doc.rank_date, below = ctx.site.discoverers && ctx.site.discoverers.below;
+    var records = '<a href="' + esc(ctx.site.links && ctx.site.links.prp_records || '#') + '">PRP Records</a>';
     document.getElementById('prime-foot').innerHTML = '# is the term number in A379020. ' +
+      (below ? 'Every prime below n = ' + fmt(below) + ' was known before this project: who found it first, and the month, are from Henri and Renaud Lifchitz’s ' +
+        records + ' (anonymous where that list has no entry), while FFT and Proof describe this project’s own re-test. ' : '') +
       (rd ? 'Top PRP ranks are from Henri Lifchitz’s <a href="' + esc(ctx.site.links && ctx.site.links.prp_records || '#') + '">PRP Records</a> list as of ' + esc(rd) +
         '; that list starts at 10,000 digits. ' : '') +
       'Proof is the power of the Prime95 PRP proof file kept for the result; × prev is n divided by the n before it.';
