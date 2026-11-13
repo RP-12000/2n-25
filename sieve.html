@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sieve · 2ⁿ−25 Prime Search</title>
+<meta name="description" content="Sieve depth by range, candidates left, P-1 factor sizes and the siever versions used.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="bar">
+    <div class="brand-nav">
+      <a class="brand" href="index.html"><span class="brand-mark">2<sup>n</sup>−25</span><span class="brand-sub">Prime Search</span></a>
+      <nav class="nav" aria-label="Main">
+        <a href="index.html">Status</a>
+        <a href="ranges.html">Ranges</a>
+        <a href="exponent.html">Exponents</a>
+        <a href="sieve.html" aria-current="page">Sieve</a>
+        <a href="primes.html">Primes</a>
+        <a href="history.html">History</a>
+        <a href="join.html">Join</a>
+      </nav>
+    </div>
+    <form class="lookup" role="search" action="exponent.html">
+      <label for="hdr-n">n =</label>
+      <input id="hdr-n" class="input" name="n" type="text" inputmode="numeric" placeholder="3600025" autocomplete="off">
+      <button class="btn" type="submit">Look up</button>
+    </form>
+  </div>
+</header>
+<main class="page" id="main">
+  <div class="page-head">
+    <div>
+      <h1 class="title">Sieve and factoring</h1>
+      <p class="lede" id="sieve-lede">Before any PRP test, every prime p up to the sieve depth is tried against all n at once: the siever solves 2<sup>n</sup> ≡ 25 (mod p) and strikes out each n that p divides. Removing a candidate this way costs a fraction of a second; a PRP test costs most of a core-hour.</p>
+    </div>
+  </div>
+
+  <section class="card" aria-labelledby="depth-title">
+    <div class="card-head"><h2 id="depth-title">Sieve depth by range</h2><span class="meta">largest prime p tried, per 0.2M of n (log scale)</span></div>
+    <div class="chart-scroll" id="depth-chart"><p class="loading">Loading…</p></div>
+    <div class="legend" id="depth-legend"></div>
+  </section>
+
+  <section class="split">
+    <div class="card">
+      <h2 id="cand-title">Candidates left</h2>
+      <p id="cand-note">Survivors fall like 1 / ln p.</p>
+      <div class="chart-scroll" id="cand-chart"></div>
+    </div>
+    <div class="card">
+      <h2 id="pm1-title">Why P-1 stopped</h2>
+      <p id="pm1-note">Sizes of the factors Prime95 P-1 found.</p>
+      <div class="chart-scroll" id="pm1-chart"></div>
+      <div class="legend" id="pm1-legend"></div>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="pm1-stats-title">
+    <div class="card-head"><h2 id="pm1-stats-title">P-1 in numbers</h2><span class="meta" id="pm1-stats-meta"></span></div>
+    <div class="tiles in-card" id="pm1-stats"></div>
+    <p class="small mt12" id="pm1-stats-note"></p>
+  </section>
+
+  <section class="card" aria-labelledby="big-title">
+    <div class="card-head"><h2 id="big-title">Largest P-1 factors</h2><span class="meta">Prime95 P-1, stage 1 bound B1 and stage 2 bound B2</span></div>
+    <div class="table-wrap" id="big-factors"></div>
+  </section>
+
+  <section class="card" aria-labelledby="together-title">
+    <div class="card-head"><h2 id="together-title">Several factors in one run</h2><span class="meta" id="together-meta"></span></div>
+    <p id="together-note"></p>
+    <div class="table-wrap" id="together"></div>
+  </section>
+
+  <section class="row top">
+    <div class="card wide">
+      <div class="card-head"><h2 id="plan-title">Sieve assignments</h2><span class="meta" id="plan-meta"></span></div>
+      <div class="table-wrap" id="plan-table"></div>
+      <p>Results from different machines are merged by intersecting their survivor lists, and any gap in the covered p range is flagged before PRP work is handed out.</p>
+    </div>
+    <div class="card narrow">
+      <h2>Benchmark</h2>
+      <p id="bench-setup"></p>
+      <div class="table-wrap" id="bench"></div>
+      <p id="bench-note"></p>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="runs-title">
+    <div class="card-head"><h2 id="runs-title">Sieve runs by range</h2><span class="meta">from the siever logs and survivor files</span></div>
+    <div class="table-wrap" id="runs-table"></div>
+    <p class="small mt12" id="runs-note"></p>
+  </section>
+
+  <section class="card" aria-labelledby="lineage-title">
+    <div class="card-head"><h2 id="lineage-title">Siever versions used</h2><a class="meta" id="siever-link" href="https://github.com/RP-12000/Mass-Prime-Siever">Mass Prime Siever on GitHub →</a></div>
+    <div class="table-wrap" id="lineage-table"></div>
+  </section>
+</main>
+<footer class="site-footer">
+  <div class="bar">
+    <span>Built from Prime95 results.json, P-1 logs and sieve output · data <span data-generated>…</span></span>
+    <span class="links"><a href="https://github.com/RP-12000/2n-25">Source and data</a><a href="https://oeis.org/A379020">OEIS A379020</a><a href="http://www.primenumbers.net/prptop/prptop.php">PRP Records</a></span>
+  </div>
+</footer>
+<script src="assets/app.js"></script>
+<script src="assets/sieve.js"></script>
+</body>
+</html>

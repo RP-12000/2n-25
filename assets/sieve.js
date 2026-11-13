@@ -1,0 +1,434 @@
+/* Sieve page: depth by range, candidates-left model, P-1 factor sizes, assignments, benchmark, runs, versions. */
+(function () {
+  'use strict';
+  var S = window.Site, fmt = S.fmt, esc = S.esc;
+
+  S.all(['ranges', 'sieve', 'site', 'summary']).then(function (d) {
+    var rows = d[0].rows, sv = d[1], site = d[2], sum = d[3];
+    var M = S.model(site);
+    var act = site.active || null;
+    renderLede(site, M, act, sum);
+    document.getElementById('depth-chart').innerHTML = depthChart(rows, site, act);
+    renderDepthLegend(rows, site, act);
+    renderCandidates(rows, site, M, act);
+    renderPm1(rows, sv, site);
+    renderBigFactors(sv);
+    renderPm1Stats(rows, sv);
+    renderTogether(sv);
+    renderPlan(rows, site, act);
+    renderBench(site);
+    renderRuns(rows, sv, M);
+    renderLineage(site);
+  }).catch(function (e) { S.fail('depth-chart', e); });
+
+  function prog(s) { return esc(S.prog(s)); }
+  function pLabel(p) { return p ? S.depth(p) : '0'; }
+  function mLabel(n) { return n ? S.M(n) : '0'; }
+  function round100(x) { return Math.round(x / 100) * 100; }
+  function inAct(r, act) { return act && r.lo >= act.lo && r.hi <= act.hi; }
+  function niceStep(raw) {
+    var p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p;
+    return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p;
+  }
+  function kLabel(v) { return v >= 1000 ? fmt(v / 1000) + 'k' : fmt(v); }
+  function duration(sec) {
+    if (!sec) return '—';
+    if (sec < 90) return Math.round(sec) + ' s';
+    if (sec < 5400) return Math.round(sec / 60) + ' min';
+    return fmt(sec / 3600, sec < 36000 ? 1 : 0) + ' h';
+  }
+
+  function renderLede(site, M, act, sum) {
+    var n0 = act ? act.lo : sum.frontier;
+    document.getElementById('sieve-lede').innerHTML =
+      'Before any PRP test, every prime p up to the sieve depth is tried against all n at once: the siever solves 2<sup>n</sup> ≡ 25 (mod p) ' +
+      'and strikes out each n that p divides. Removing a candidate this way costs a fraction of a second; a PRP test near n = ' + S.M(n0) +
+      ' costs ' + S.cost(M.prpMinutes(n0)).replace('≈', 'about') + '.';
+  }
+
+  /* ---------- depth by range ---------- */
+  function versionSpan(site) {
+    var old = (site.siever_versions || []).filter(function (v) { return v.hi !== null && v.hi !== undefined; });
+    if (!old.length) return null;
+    var a = old[0].program, b = old[old.length - 1].program;
+    var ma = /^(.*?)\s+v?(\d[\w.]*)$/.exec(a), mb = /^(.*?)\s+v?(\d[\w.]*)$/.exec(b);
+    var name = old.length === 1 ? a : ma && mb && ma[1] === mb[1] ? ma[1] + ' ' + ma[2] + ' – ' + mb[2] : a + ' – ' + b;
+    var cpu = old.every(function (v) { return /^CPU/i.test(v.hardware || ''); });
+    return {
+      lo: Math.min.apply(null, old.map(function (v) { return v.lo; })),
+      hi: Math.max.apply(null, old.map(function (v) { return v.hi; })),
+      label: prog(name) + (cpu ? ' · CPU only' : '')
+    };
+  }
+  function planSteps(site, fromDepth) {
+    return (site.sieve_plan || []).filter(function (s) { return s.p_to > fromDepth && !/^done$/i.test(s.status || ''); });
+  }
+
+  function depthChart(rows, site, act) {
+    var L = 60, R = 1140, B = 250, T = 20;
+    var target = site.sieve_target || 1e14;
+    var depths = rows.filter(function (r) { return r.sieve && r.sieve.depth; }).map(function (r) { return r.sieve.depth; });
+    var E0 = Math.max(0, Math.floor(Math.log10(depths.length ? Math.min.apply(null, depths) : 1e7)) - 1);
+    var E1 = Math.ceil(Math.log10(target)) + 1;
+    var X = function (n) { return L + n / 1e7 * (R - L); };
+    var Y = function (p) { return B - (Math.log10(Math.max(p, Math.pow(10, E0))) - E0) / (E1 - E0) * (B - T); };
+    var o = ['<svg class="chart" viewBox="0 0 1160 290" role="img" aria-label="' + esc(depthSummary(rows, site, act)) + '">'];
+    var g = [], yl = [];
+    for (var e = E0; e <= E1; e++) {
+      if (e > E0) g.push('<line x1="' + L + '" y1="' + S.r1(Y(Math.pow(10, e))) + '" x2="' + R + '" y2="' + S.r1(Y(Math.pow(10, e))) + '"></line>');
+      yl.push('<text class="end" x="' + (L - 8) + '" y="' + S.r1(Y(Math.pow(10, e)) + 3) + '">' + S.tenTo(e) + '</text>');
+    }
+    o.push('<g class="grid">' + g.join('') + '</g><line class="axis" x1="' + L + '" y1="' + B + '" x2="' + R + '" y2="' + B + '"></line>' + yl.join(''));
+
+    // sieved rows
+    rows.forEach(function (r) {
+      if (!r.sieve || !r.sieve.depth) return;
+      var x0 = X(r.lo) + 1.5, w = X(r.hi) - X(r.lo) - 3, y = Y(r.sieve.depth);
+      o.push('<rect class="bar" x="' + S.r1(x0) + '" y="' + S.r1(y) + '" width="' + S.r1(w) + '" height="' + S.r1(B - y) + '"><title>' +
+        S.rangeLabel(r.lo, r.hi) + ' · sieved to ' + S.depth(r.sieve.depth) + (r.sieve.program ? ' · ' + prog(r.sieve.program) : '') + '</title></rect>');
+    });
+
+    // planned work on the active range
+    if (act) {
+      var actRows = rows.filter(function (r) { return inAct(r, act); });
+      var actDepth = Math.max.apply(null, [0].concat(actRows.map(function (r) { return r.sieve && r.sieve.depth ? r.sieve.depth : 0; })));
+      var steps = planSteps(site, actDepth);
+      var xa = X(act.lo) + 1.5, xb = X(act.hi) - 1.5, xm = (xa + xb) / 2;
+      if (steps.length) {
+        var first = steps[0], last = steps[steps.length - 1];
+        var live = /^(next|running)$/i.test(first.status || '');
+        var yBase = Y(Math.max(actDepth, Math.pow(10, E0)));
+        var yFirst = Y(first.p_to), yLast = Y(last.p_to);
+        if (live) {
+          o.push('<rect class="bar plan" x="' + S.r1(xa) + '" y="' + S.r1(yFirst) + '" width="' + S.r1(xb - xa) + '" height="' + S.r1(yBase - yFirst) + '"></rect>');
+          o.push('<text class="mid accent" style="font-weight:600" x="' + S.r1(xm) + '" y="' + S.r1(yFirst + 19) + '">' + S.depth(first.p_to) + ' ' + esc(String(first.status).toLowerCase()) + '</text>');
+        }
+        var dashFrom = live ? yFirst : yBase;
+        if (!live || steps.length > 1) {
+          o.push('<rect class="bar dashed" x="' + S.r1(xa) + '" y="' + S.r1(yLast) + '" width="' + S.r1(xb - xa) + '" height="' + S.r1(dashFrom - yLast) + '"></rect>');
+          o.push('<text class="mid accent" x="' + S.r1(xm) + '" y="' + S.r1((yLast + dashFrom) / 2 + 4) + '">→ ' + S.depth(last.p_to) + ' planned</text>');
+        }
+        var cur = (site.siever_versions || []).filter(function (v) { return v.hi === null || v.hi === undefined; })[0];
+        if (cur) o.push('<text class="sans mid accent" style="font-weight:600" x="' + S.r1(xm) + '" y="' + S.r1(yLast - 10) + '">' + prog(cur.program) + '</text>');
+      }
+    }
+
+    // label for the older CPU sievers
+    var vs = versionSpan(site);
+    if (vs) {
+      var oldTop = Math.max.apply(null, [Math.pow(10, E0)].concat(rows.filter(function (r) { return r.hi <= vs.hi && r.sieve && r.sieve.depth; })
+        .map(function (r) { return r.sieve.depth; })));
+      o.push('<text class="sans mid strong" x="' + S.r1(X((vs.lo + vs.hi) / 2)) + '" y="' + S.r1(Y(oldTop) - 21) + '">' + vs.label + '</text>');
+    }
+    // the part nobody has touched yet
+    var tail = rows.filter(function (r) { return !(r.sieve && r.sieve.depth) && !inAct(r, act) && (!act || r.lo >= act.hi); });
+    if (tail.length) {
+      var tlo = Math.min.apply(null, tail.map(function (r) { return r.lo; })), thi = Math.max.apply(null, tail.map(function (r) { return r.hi; }));
+      o.push('<text class="sans mid" x="' + S.r1(X((tlo + thi) / 2)) + '" y="' + (B - 20) + '">' + S.rangeLabel(tlo, thi) + ' · not started</text>');
+    }
+    var xt = [];
+    for (var m = 0; m <= 10; m++) xt.push('<text class="mid" x="' + S.r1(X(m * 1e6)) + '" y="' + (B + 20) + '">' + (m ? m + 'M' : '0') + '</text>');
+    o.push(xt.join('') + '</svg>');
+    return o.join('');
+  }
+  function depthSummary(rows, site, act) {
+    var d = rows.filter(function (r) { return r.sieve && r.sieve.depth; }).map(function (r) { return r.sieve.depth; });
+    var s = 'Sieve depth per 0.2M range of n';
+    if (d.length) s += ': from ' + S.depth(Math.min.apply(null, d)) + ' to ' + S.depth(Math.max.apply(null, d));
+    if (act) s += '; ' + S.rangeLabel(act.lo, act.hi) + ' planned to ' + S.depth(site.sieve_target || 1e14);
+    return s + '.';
+  }
+  function renderDepthLegend(rows, site, act) {
+    var h = ['<span><i class="key solid" aria-hidden="true"></i>Sieved</span>'];
+    if (act) {
+      var actDepth = Math.max.apply(null, [0].concat(rows.filter(function (r) { return inAct(r, act); }).map(function (r) { return r.sieve && r.sieve.depth ? r.sieve.depth : 0; })));
+      var steps = planSteps(site, actDepth);
+      if (steps.length && /^(next|running)$/i.test(steps[0].status || '')) {
+        h.push('<span><i class="key u" aria-hidden="true"></i>' + esc(steps[0].status) + ': to ' + S.depth(steps[0].p_to) + ' · ' + esc(steps[0].machine) + '</span>');
+        steps = steps.slice(1);
+      }
+      if (steps.length) h.push('<span><i class="key dashbox" aria-hidden="true"></i>Planned: to ' + S.depth(steps[steps.length - 1].p_to) + ' · ' + esc(steps[0].machine) + '</span>');
+    }
+    h.push('<span><i class="key open" aria-hidden="true"></i>Not sieved yet</span>');
+    document.getElementById('depth-legend').innerHTML = h.join('');
+  }
+
+  /* ---------- candidates left ---------- */
+  function renderCandidates(rows, site, M, act) {
+    if (!act) { document.getElementById('cand-chart').innerHTML = ''; return; }
+    var actRows = rows.filter(function (r) { return inAct(r, act); });
+    var odd = actRows.reduce(function (s, r) { return s + r.odd; }, 0);
+    if (!odd) return;
+    var f = function (p) { return M.survivors(odd, p); };
+    document.getElementById('cand-title').textContent = 'Candidates left in ' + S.rangeLabel(act.lo, act.hi);
+    document.getElementById('cand-note').innerHTML = 'Survivors fall like 1 / ln p: about ' + M.K + ' × ' + fmt(odd) +
+      ' odd n ÷ ln p, with the constant measured on the ranges already sieved.';
+
+    var old = Math.max.apply(null, [0].concat(rows.filter(function (r) { return r.hi <= act.lo && r.sieve && r.sieve.depth; }).map(function (r) { return r.sieve.depth; })));
+    var target = site.sieve_target || 1e14;
+    var e0 = Math.min(9, Math.floor(Math.log10(old || 1e9))), e1 = Math.ceil(Math.log10(target)) + 1;
+    var L = 60, R = 560, B = 210, T = 30;
+    var X = function (p) { return L + (Math.log10(p) - e0) / (e1 - e0) * (R - L); };
+    var vHi = f(Math.pow(10, e0)), vLo = f(Math.pow(10, e1));
+    var step = niceStep((vHi - vLo) / 4);
+    var lo = Math.floor(vLo / step) * step, hi = Math.ceil(vHi / step) * step;
+    var Y = function (v) { return B - (v - lo) / (hi - lo) * (B - T); };
+    var o = ['<svg class="chart small" viewBox="0 0 620 250" role="img" aria-label="Predicted candidates left in ' + esc(S.rangeLabel(act.lo, act.hi)) +
+      ' against sieve depth: ' + planMarks(site, old).map(function (p) { return 'about ' + fmt(round100(f(p))) + ' at ' + S.depth(p); }).join(', ') + '.">'];
+    var g = [], yl = [], xl = [];
+    for (var v = lo; v <= hi + 1e-9; v += step) {
+      if (v > lo) g.push('<line x1="' + L + '" y1="' + S.r1(Y(v)) + '" x2="' + R + '" y2="' + S.r1(Y(v)) + '"></line>');
+      yl.push('<text class="end" x="' + (L - 8) + '" y="' + S.r1(Y(v) + 3) + '">' + kLabel(v) + '</text>');
+    }
+    for (var e = e0; e <= e1; e++) xl.push('<text class="mid" x="' + S.r1(X(Math.pow(10, e))) + '" y="' + (B + 20) + '">' + S.tenTo(e) + '</text>');
+    o.push('<g class="grid">' + g.join('') + '</g><line class="axis" x1="' + L + '" y1="' + B + '" x2="' + R + '" y2="' + B + '"></line>' + yl.join('') + xl.join(''));
+    o.push('<text class="sans mid" x="' + ((L + R) / 2) + '" y="' + (B + 38) + '">sieve depth p (log scale)</text>');
+    var pts = [];
+    for (var i = 0; i <= 60; i++) {
+      var p = Math.pow(10, e0 + (e1 - e0) * i / 60);
+      pts.push((i ? 'L' : 'M') + S.r1(X(p)) + ' ' + S.r1(Y(f(p))));
+    }
+    o.push('<path class="line" d="' + pts.join(' ') + '"></path>');
+    var marks = [];
+    if (old) marks.push({ p: old, cls: 'open-dot', text: S.depth(old) + ' (old depth) · ' + fmt(round100(f(old))), tc: 'strong' });
+    planSteps(site, 0).forEach(function (s) {
+      if (s.p_to <= old) return;
+      var t = S.depth(s.p_to) + ' · ' + fmt(round100(f(s.p_to)));
+      if (site.prp_from_depth && s.p_to === site.prp_from_depth) t += ' · PRP starts';
+      marks.push({ p: s.p_to, cls: 'dot', text: t, tc: 'accent' });
+    });
+    marks.forEach(function (m, k) {
+      var x = X(m.p), y = Y(f(m.p)), lastOne = k === marks.length - 1 && k > 0;
+      o.push(m.cls === 'dot' ? '<circle class="dot" cx="' + S.r1(x) + '" cy="' + S.r1(y) + '" r="4.5"></circle>'
+        : '<circle cx="' + S.r1(x) + '" cy="' + S.r1(y) + '" r="4.5" style="fill: var(--surface); stroke: var(--ink-2); stroke-width: 2"></circle>');
+      o.push('<text class="' + m.tc + (lastOne ? ' end' : '') + '" x="' + S.r1(lastOne ? x - 8 : x + 9) + '" y="' + S.r1(lastOne ? y + 20 : y - 8) + '">' + esc(m.text) + '</text>');
+    });
+    // measured, once the active range has been sieved
+    if (actRows.length && actRows.every(function (r) { return r.sieve && r.sieve.depth; })) {
+      var dm = Math.min.apply(null, actRows.map(function (r) { return r.sieve.depth; }));
+      var sm = actRows.reduce(function (s, r) { return s + (r.survivors || 0); }, 0);
+      if (sm >= lo && sm <= hi) {
+        o.push('<circle cx="' + S.r1(X(dm)) + '" cy="' + S.r1(Y(sm)) + '" r="5" style="fill: var(--ink)"></circle>');
+        o.push('<text class="strong" x="' + S.r1(X(dm) + 9) + '" y="' + S.r1(Y(sm) + 17) + '">measured · ' + fmt(sm) + '</text>');
+      }
+    }
+    o.push('</svg>');
+    document.getElementById('cand-chart').innerHTML = o.join('');
+  }
+  function planMarks(site, old) {
+    var out = old ? [old] : [];
+    planSteps(site, 0).forEach(function (s) { if (s.p_to > old) out.push(s.p_to); });
+    return out;
+  }
+
+  /* ---------- P-1 factor sizes ---------- */
+  function renderPm1(rows, sv, site) {
+    var bits = sv.pm1_factor_bits || {};
+    var keys = Object.keys(bits).map(Number).sort(function (a, b) { return a - b; });
+    var total = sv.pm1_factor_count || keys.reduce(function (s, k) { return s + bits[k]; }, 0);   // prime factors
+    var nFact = sv.pm1_n_factored || total;                                                        // n that P-1 factored
+    var pmRows = rows.filter(function (r) { return r.pm1 && r.pm1.runs > 0; });
+    if (!keys.length || !pmRows.length) {
+      document.getElementById('pm1-note').textContent = 'No P-1 results in the archive.';
+      return;
+    }
+    var stop = pmRows[pmRows.length - 1].hi;
+    document.getElementById('pm1-title').textContent = 'Why P-1 stopped at ' + S.M(stop);
+    var below = {};
+    (sv.pm1_factors_below || []).forEach(function (t) { below[t[0]] = t[1]; });
+    var target = site.sieve_target || 1e14;
+    var firstStep = (site.sieve_plan || [])[0];
+    var p1 = firstStep ? firstStep.p_to : 1e12;
+    var share = function (p) { return below[p] !== undefined ? below[p] / nFact : null; };
+    var s1 = share(p1), s2 = share(target);
+    var note = 'Sizes of the ' + fmt(total) + ' prime factors Prime95 P-1 found for ' + S.rangeLabel(pmRows[0].lo, stop) + '.';
+    if (sv.pm1_composite) {
+      note += ' ' + fmt(sv.pm1_composite) + ' of its ' + fmt(nFact) + ' results were the product of two or more primes found at once; they are split here.';
+    }
+    if (s1 !== null && s2 !== null) {
+      note += ' For ' + Math.round(s1 * 100) + '% of the n it factored, one of the factors is below ' + S.depth(p1) + ' (' + Math.round(s2 * 100) +
+        '% below ' + S.depth(target) + '), where the new sieve removes the same n more cheaply.';
+    }
+    document.getElementById('pm1-note').innerHTML = note;
+
+    var lo = keys[0], cap = lo + 49, maxK = keys[keys.length - 1];
+    var over = keys.filter(function (k) { return k > cap; }).reduce(function (s, k) { return s + bits[k]; }, 0);
+    var nb = Math.min(maxK, cap) - lo + 1 + (over ? 1 : 0);
+    var L = 50, R = 560, B = 200, T = 22, W = (R - L) / nb;
+    var counts = [];
+    for (var k = lo; k <= Math.min(maxK, cap); k++) counts.push(bits[k] || 0);
+    if (over) counts.push(over);
+    var top = Math.max.apply(null, counts), step = niceStep(top / 4);
+    top = Math.ceil(top / step) * step;
+    var Y = function (v) { return B - v / top * (B - T); };
+    var XL = function (lg) { return L + Math.max(0, Math.min(nb, lg - lo + 1)) * W; };
+    var o = ['<svg class="chart small" viewBox="0 0 620 250" role="img" aria-label="Histogram of P-1 factor sizes from ' + lo + ' to ' + maxK +
+      ' bits; the tallest bar has ' + fmt(Math.max.apply(null, counts)) + ' factors.">'];
+    var x2 = XL(Math.log2(target)), x1 = XL(Math.log2(p1));
+    if (s2 !== null) o.push('<rect class="wash" x="' + L + '" y="' + T + '" width="' + S.r1(x2 - L) + '" height="' + (B - T) + '"></rect>');
+    if (s1 !== null) o.push('<rect class="wash-2" x="' + L + '" y="' + T + '" width="' + S.r1(x1 - L) + '" height="' + (B - T) + '"></rect>');
+    var g = [], yl = [];
+    for (var v = 0; v <= top + 1e-9; v += step) {
+      if (v > 0) g.push('<line x1="' + L + '" y1="' + S.r1(Y(v)) + '" x2="' + R + '" y2="' + S.r1(Y(v)) + '"></line>');
+      yl.push('<text class="end" x="' + (L - 6) + '" y="' + S.r1(Y(v) + 3) + '">' + fmt(v) + '</text>');
+    }
+    o.push('<g class="grid">' + g.join('') + '</g><line class="axis" x1="' + L + '" y1="' + B + '" x2="' + R + '" y2="' + B + '"></line>' + yl.join(''));
+    var bw = Math.max(1, W * 0.84);
+    counts.forEach(function (c, i) {
+      if (!c) return;
+      var isOver = over && i === counts.length - 1;
+      var label = isOver ? (cap + 1) + '+ bits' : (lo + i) + ' bits';
+      o.push('<rect class="bar' + (isOver ? ' soft' : '') + '" x="' + S.r1(L + i * W + (W - bw) / 2) + '" y="' + S.r1(Y(c)) + '" width="' + S.r1(bw) +
+        '" height="' + S.r1(B - Y(c)) + '"><title>' + label + ': ' + fmt(c) + '</title></rect>');
+    });
+    var xl = [];
+    for (var b = lo; b <= Math.min(maxK, cap); b++) {
+      if ((b === lo || b % 10 === 0) && !(over && Math.min(maxK, cap) - b < 3)) xl.push('<text class="mid" x="' + S.r1(L + (b - lo + 0.5) * W) + '" y="' + (B + 18) + '">' + b + '</text>');
+    }
+    if (over) xl.push('<text class="mid" x="' + S.r1(L + (nb - 0.5) * W) + '" y="' + (B + 18) + '">' + (cap + 1) + '+</text>');
+    o.push(xl.join('') + '<text class="sans mid" x="' + ((L + R) / 2) + '" y="' + (B + 38) + '">factor size in bits</text></svg>');
+    document.getElementById('pm1-chart').innerHTML = o.join('');
+    var lg = [];
+    if (s1 !== null) lg.push('<span><i class="key wash2" aria-hidden="true"></i>p &lt; ' + S.depth(p1) + ' (next sieve stage): ' + Math.round(s1 * 100) + '% of the n</span>');
+    if (s2 !== null) lg.push('<span><i class="key wash" aria-hidden="true"></i>p &lt; ' + S.depth(target) + ' (planned depth): ' + Math.round(s2 * 100) + '% of the n</span>');
+    if (over) lg.push('<span><i class="key" style="background:var(--axis)" aria-hidden="true"></i>' + (cap + 1) + ' bits or more: ' + fmt(over) + '</span>');
+    document.getElementById('pm1-legend').innerHTML = lg.join('');
+
+  }
+
+  function renderBigFactors(sv) {
+    var list = sv.largest_pm1 || [];
+    var el = document.getElementById('big-factors');
+    if (!el) return;
+    if (!list.length) { el.closest('section').hidden = true; return; }
+    var showWho = list.some(function (f) { return f.who && f.who !== list[0].who; });
+    el.innerHTML = '<table class="data"><thead><tr><th class="r">n</th><th>Factor</th><th class="r">Digits</th><th class="r">Bits</th>' +
+      '<th class="r">B1</th><th class="r">B2</th><th>Found (UTC)</th>' + (showWho ? '<th class="text">By</th>' : '') + '</tr></thead><tbody>' +
+      list.map(function (f) {
+        return '<tr><td class="r"><a href="exponent.html?n=' + f.n + '">' + fmt(f.n) + '</a></td><td class="wrap">' + bigNum(f.p) +
+          (f.together ? '<br><span class="muted small">found in one run with ' + (f.together === 2 ? 'another prime' : (f.together - 1) + ' other primes') + '</span>' : '') + '</td><td class="r">' +
+          f.digits + '</td><td class="r">' + f.bits + '</td><td class="r">' + fmt(f.b1) + '</td><td class="r">' + (f.b2 ? fmt(f.b2) : '—') + '</td><td>' +
+          esc(S.minute(f.found)) + '</td>' + (showWho ? '<td class="text">' + esc(f.who) + '</td>' : '') + '</tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  // a long number with a line break allowed after each comma
+  function bigNum(v) { return S.fmtBig(v).replace(/,/g, ',<wbr>'); }
+  function nLink(n) { return '<a href="exponent.html?n=' + n + '">n = ' + fmt(n) + '</a>'; }
+  var WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+  function word(k) { return WORDS[k] || fmt(k); }
+
+  function renderPm1Stats(rows, sv) {
+    var st = sv.pm1_stats, el = document.getElementById('pm1-stats');
+    if (!st || !st.with_factor) { el.closest('section').hidden = true; return; }
+    var pmRows = rows.filter(function (r) { return r.pm1 && r.pm1.runs > 0; });
+    var big = (sv.largest_pm1 || [])[0], comp = (sv.pm1_together || [])[0], s1 = st.largest_stage1, sm = st.smallest;
+    var per = st.per_result || {}, ks = Object.keys(per).map(Number).filter(function (k) { return k > 1; }).sort(function (a, b) { return a - b; });
+    var several = ks.reduce(function (s, k) { return s + per[k]; }, 0);
+    var most = ks[ks.length - 1], mostRun = most ? (sv.pm1_together || []).filter(function (t) { return t.parts.length === most; })[0] : null;
+    var T = [];
+    var tile = function (label, value, sub, cls) { T.push('<div class="tile"><div class="eyebrow">' + label + '</div><div class="v' + (cls ? ' ' + cls : '') + '">' + value + '</div><div class="s">' + sub + '</div></div>'); };
+    tile('P-1 runs', fmt(st.runs), (st.runs === st.n_tested ? 'one per n' : fmt(st.n_tested) + ' n') + (pmRows.length ? ', ' + S.rangeLabel(pmRows[0].lo, pmRows[pmRows.length - 1].hi) : ''));
+    tile('Found a factor', S.pct(st.with_factor / st.runs), fmt(st.with_factor) + ' runs: ' + fmt(st.stage1) + ' in stage 1, ' + fmt(st.stage2) + ' in stage 2');
+    tile('Prime factors', fmt(st.primes), st.median_bits ? 'median size ' + fmt(st.median_bits) + ' bits' : '');
+    if (several) tile('Several in one run', fmt(several), ks.map(function (k) { return fmt(per[k]) + ' × ' + word(k); }).join(', ') +
+      (mostRun && per[most] === 1 ? ' (' + nLink(mostRun.n) + ')' : ''));
+    if (big) tile('Largest prime factor', big.digits + ' digits', big.bits + ' bits · ' + nLink(big.n) + (big.b2 ? ' · stage 2' : ' · stage 1'));
+    if (s1) tile('Largest stage-1 factor', s1.digits + ' digits', s1.bits + ' bits · ' + nLink(s1.n) + ' · p − 1 has no prime factor above ' + fmt(s1.b1));
+    if (comp) tile('Largest product reported', comp.digits + ' digits', word(comp.parts.length) + ' primes · ' + nLink(comp.n));
+    if (sm) tile('Smallest factor', S.fmtBig(sm.p), nLink(sm.n) + (sm.sieve_depth ? ' · the sieve had gone to ' + S.fmtBig(sm.sieve_depth) + ' there' : ''), sm.p.length > 10 ? 'long' : 'mid');
+    el.innerHTML = T.join('');
+    document.getElementById('pm1-stats-meta').textContent = 'Prime95 P-1, ' + (pmRows.length ? S.rangeLabel(pmRows[0].lo, pmRows[pmRows.length - 1].hi) : '');
+    document.getElementById('pm1-stats-note').innerHTML = 'Stage 1 finds a prime factor p when every prime factor of p − 1 is at most B1; stage 2 also allows one prime factor of p − 1 between B1 and B2. ' +
+      (st.below_sieve_depth === 0 ? 'Every factor P-1 found lies above the sieve depth of its range, as it should: the sieve had already removed every n with a smaller factor.'
+        : st.below_sieve_depth ? fmt(st.below_sieve_depth) + ' factors P-1 found lie at or below the sieve depth of their range, where the sieve should have found them first.' : '');
+  }
+
+  function renderTogether(sv) {
+    var list = sv.pm1_together || [], st = sv.pm1_stats || {}, el = document.getElementById('together');
+    if (!list.length) { el.closest('section').hidden = true; return; }
+    var several = sv.pm1_composite || list.length;
+    document.getElementById('together-meta').textContent = 'the ' + list.length + ' largest of ' + fmt(several);
+    document.getElementById('together-note').innerHTML = 'When two or more prime factors of 2<sup>n</sup> − 25 turn up in the same P-1 run, Prime95 reports only their product. ' +
+      'The site splits each product by replaying the run in small steps, and shows both: the number P-1 reported, and below it the primes it is made of. ' +
+      'This happened in ' + fmt(several) + ' of the ' + fmt(st.with_factor || 0) + ' runs that found a factor.';
+    el.innerHTML = '<table class="data"><thead><tr><th class="r">n</th><th>Factor P-1 reported = its prime factors</th><th class="r">Digits</th><th class="r">Primes</th>' +
+      '<th class="text">Stage</th><th class="r">B1</th><th class="r">B2</th><th>Found (UTC)</th></tr></thead><tbody>' +
+      list.map(function (t) {
+        return '<tr><td class="r top"><a href="exponent.html?n=' + t.n + '">' + fmt(t.n) + '</a></td><td class="wrap prod"><b>' + bigNum(t.p) + '</b><span class="parts">= ' +
+          t.parts.map(function (q) { return '<span class="nw">' + S.fmtBig(q) + '</span>'; }).join(' × ') + '</span></td><td class="r top">' + t.digits +
+          '</td><td class="r top">' + t.parts.length + '</td><td class="text top">' + (t.b2 ? '2' : '1') + '</td><td class="r top">' + fmt(t.b1) + '</td><td class="r top">' +
+          (t.b2 ? fmt(t.b2) : '—') + '</td><td class="top">' + esc(S.day(t.found)) + '</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  /* ---------- assignments, benchmark ---------- */
+  function statusPill(s) {
+    var t = String(s || '');
+    var cls = /^done$/i.test(t) ? 'good' : /^(next|running)$/i.test(t) ? 'accent' : 'muted';
+    return '<span class="pill ' + cls + '">' + (/^running$/i.test(t) ? '<span class="dot"></span>' : '') + esc(t) + '</span>';
+  }
+  function renderPlan(rows, site, act) {
+    var plan = site.sieve_plan || [];
+    var el = document.getElementById('plan-table');
+    if (!plan.length) { el.innerHTML = '<p class="small">No sieve work planned.</p>'; return; }
+    if (act) {
+      var odd = rows.filter(function (r) { return inAct(r, act); }).reduce(function (s, r) { return s + r.odd; }, 0);
+      document.getElementById('plan-title').innerHTML = 'Sieve assignments · ' + fmt(act.lo) + ' ≤ n &lt; ' + fmt(act.hi);
+      document.getElementById('plan-meta').textContent = fmt(odd) + ' odd n';
+    }
+    el.innerHTML = '<table class="data"><thead><tr><th>p range</th><th class="text">Machine</th><th>Backend</th><th class="text">Status</th><th class="r">Survivors</th></tr></thead><tbody>' +
+      plan.map(function (s) {
+        return '<tr><td>' + pLabel(s.p_from) + ' – ' + pLabel(s.p_to) + '</td><td class="text">' + esc(s.machine) + '</td><td>' + esc(s.backend) +
+          '</td><td class="text">' + statusPill(s.status) + '</td><td class="r">' + esc(s.survivors) + '</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+  function renderBench(site) {
+    var b = site.benchmarks;
+    if (!b || !b.rows || !b.rows.length) return;
+    document.getElementById('bench-setup').textContent = b.setup || '';
+    var best = Math.min.apply(null, b.rows.map(function (r) { return r[1]; }));
+    document.getElementById('bench').innerHTML = '<table class="data"><thead><tr><th class="text">Hardware</th><th class="r">Time</th><th class="text">Speed</th></tr></thead><tbody>' +
+      b.rows.map(function (r) {
+        var rel = best / r[1];
+        return '<tr><td class="text">' + esc(r[0]) + '</td><td class="r">' + fmt(r[1]) + ' s</td><td class="text" style="min-width:90px"><div class="meter" style="margin:0" title="' +
+          Math.round(rel * 100) + '% of the fastest"><i style="width:' + (rel * 100).toFixed(1) + '%"></i></div></td></tr>';
+      }).join('') + '</tbody></table>';
+    document.getElementById('bench-note').textContent = b.note || '';
+  }
+
+  /* ---------- per-range runs ---------- */
+  function renderRuns(rows, sv, M) {
+    var done = rows.filter(function (r) { return r.sieve && r.sieve.depth; });
+    var el = document.getElementById('runs-table');
+    if (!done.length) { el.innerHTML = '<p class="small">No sieve runs yet.</p>'; return; }
+    var showStations = done.some(function (r) { return r.sieve.stations > 1; });
+    el.innerHTML = '<table class="data"><thead><tr><th>Range of n</th><th class="text">Program</th><th class="r">Sieved to p</th><th>Finished (UTC)</th>' +
+      '<th class="r">Run time</th>' + (showStations ? '<th class="r">Stations</th>' : '') + '<th class="r">Odd n</th><th class="r">Survivors</th><th class="r">Removed</th><th class="r">K</th></tr></thead><tbody>' +
+      done.map(function (r) {
+        var removed = r.odd ? (r.odd - (r.survivors || 0)) / r.odd : 0;
+        return '<tr><td>' + S.rangeLabel(r.lo, r.hi) + '</td><td class="text">' + prog(r.sieve.program || '—') + '</td><td class="r">' + S.depth(r.sieve.depth) +
+          '</td><td>' + esc(S.day(r.sieve.end)) + '</td><td class="r">' + duration(r.sieve.cpu_s) + '</td>' +
+          (showStations ? '<td class="r">' + (r.sieve.stations || 1) + '</td>' : '') + '<td class="r">' + fmt(r.odd) + '</td><td class="r">' + fmt(r.survivors) +
+          '</td><td class="r">' + S.pct(removed) + '</td><td class="r">' + (r.survivor_K ? r.survivor_K.toFixed(3) : '—') + '</td></tr>';
+      }).join('') + '</tbody></table>';
+    document.getElementById('runs-note').innerHTML = 'K = survivors × ln p ÷ odd n. If the sieve behaves as expected, K stays the same at every depth; the model uses K = ' +
+      M.K + (sv.survivor_K_mean ? ', and the ranges above average ' + Number(sv.survivor_K_mean).toFixed(3) : '') + '. Run time is the wall-clock time in the siever logs, added up over stations and machines.' +
+      (function () {
+        var up = done.filter(function (r) { return r.sieve.by && r.sieve.by.length; });
+        return up.length ? ' Slices sent through the Join page: ' + up.map(function (r) { return S.rangeLabel(r.lo, r.hi) + ' by ' + r.sieve.by.map(esc).join(', '); }).join('; ') + '.' : '';
+      })();
+  }
+
+  function renderLineage(site) {
+    var vs = site.siever_versions || [];
+    var link = site.links && site.links.siever;
+    if (link) document.getElementById('siever-link').href = link;
+    document.getElementById('lineage-table').innerHTML = '<table class="data"><thead><tr><th class="text">Program</th><th>First run</th><th>Ranges of n</th><th>Depth</th><th class="text">Hardware</th></tr></thead><tbody>' +
+      vs.map(function (v) {
+        var cur = v.hi === null || v.hi === undefined;
+        return '<tr><td class="text">' + prog(v.program) + '</td><td>' + esc(v.first_run) + '</td><td>' + mLabel(v.lo) + (cur ? ' →' : ' – ' + mLabel(v.hi)) +
+          '</td><td>' + S.supHTML(esc(v.depth)) + '</td><td class="text">' + esc(v.hardware) + (cur && link ? ' · <a href="' + esc(link) + '">source</a>' : '') + '</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+})();

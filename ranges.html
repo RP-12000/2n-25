@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ranges · 2ⁿ−25 Prime Search</title>
+<meta name="description" content="Status of every odd n below 10^7, per range of n: sieve, P-1 and PRP work.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="bar">
+    <div class="brand-nav">
+      <a class="brand" href="index.html"><span class="brand-mark">2<sup>n</sup>−25</span><span class="brand-sub">Prime Search</span></a>
+      <nav class="nav" aria-label="Main">
+        <a href="index.html">Status</a>
+        <a href="ranges.html" aria-current="page">Ranges</a>
+        <a href="exponent.html">Exponents</a>
+        <a href="sieve.html">Sieve</a>
+        <a href="primes.html">Primes</a>
+        <a href="history.html">History</a>
+        <a href="join.html">Join</a>
+      </nav>
+    </div>
+    <form class="lookup" role="search" action="exponent.html">
+      <label for="hdr-n">n =</label>
+      <input id="hdr-n" class="input" name="n" type="text" inputmode="numeric" placeholder="3600025" autocomplete="off">
+      <button class="btn" type="submit">Look up</button>
+    </form>
+  </div>
+</header>
+<main class="page" id="main">
+  <div class="page-head">
+    <div>
+      <h1 class="title">Work distribution</h1>
+      <p class="lede">Status of every odd n below 10<sup>7</sup>. Even n never give primes, since 2<sup>2m</sup> − 25 = (2<sup>m</sup> − 5)(2<sup>m</sup> + 5).</p>
+    </div>
+    <div class="seg" role="group" aria-label="Group rows by">
+      <button type="button" id="by-1m" aria-pressed="true">1M rows</button>
+      <button type="button" id="by-02m" aria-pressed="false">0.2M rows</button>
+    </div>
+  </div>
+
+  <section class="card" aria-label="Totals">
+    <div class="totals" id="totals"><p class="loading">Loading…</p></div>
+    <div class="stackbar" id="stack" aria-hidden="true"></div>
+    <div class="legend" id="stack-legend"></div>
+  </section>
+
+  <section class="card" aria-label="Status by range of n">
+    <div class="table-wrap mt0" id="range-table"></div>
+  </section>
+
+  <section class="split three">
+    <div class="card"><h3>Sieve factor</h3><p id="note-sieve">A prime p below the sieve depth divides 2<sup>n</sup> − 25, so n is struck out before any other work.</p></div>
+    <div class="card"><h3>P-1 factor</h3><p id="note-pm1">Prime95 P-1 found a factor of a sieve survivor, so no PRP test was needed.</p></div>
+    <div class="card"><h3>Data files</h3><p><code>data/ranges.json</code> holds one row per 0.2M of n, and <code>data/n/</code> one file per 0.1M with every sieve survivor and its P-1 and PRP records. <a href="join.html#data">More about the data →</a></p></div>
+  </section>
+</main>
+<footer class="site-footer">
+  <div class="bar">
+    <span>Built from Prime95 results.json, P-1 logs and sieve output · data <span data-generated>…</span></span>
+    <span class="links"><a href="https://github.com/RP-12000/2n-25">Source and data</a><a href="https://oeis.org/A379020">OEIS A379020</a><a href="http://www.primenumbers.net/prptop/prptop.php">PRP Records</a></span>
+  </div>
+</footer>
+<script src="assets/app.js"></script>
+<script src="assets/ranges.js"></script>
+</body>
+</html>

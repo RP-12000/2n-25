@@ -1,0 +1,166 @@
+  <div class="page-head">
+    <div>
+      <h1 class="title">Join the search</h1>
+      <p class="lede" id="join-lede">Today the search runs on one laptop and free Kaggle GPU sessions, so every extra machine shortens the wait for the next prime.</p>
+    </div>
+  </div>
+
+  <section class="split three" aria-label="Work you can take">
+    <article class="card way">
+      <div class="card-head"><h2>Sieve on a GPU</h2><span class="pill accent">Needed now</span></div>
+      <div class="grow">
+        <p>Mass Prime Siever 12.0 strikes out every n that has a factor below the limit. Any CUDA or OpenCL GPU helps; a free Kaggle session with two T4s works too.</p>
+        <div class="facts-list" id="way-sieve">
+          <div><span>Next</span><span>p 10<sup>12</sup> – 10<sup>13</sup>, then to 10<sup>14</sup></span></div>
+          <div><span>One T4</span><span>≈ laptop GPU + 15 CPU threads</span></div>
+          <div><span>Session</span><span>Kaggle 2 × T4 · 11.5 h</span></div>
+        </div>
+      </div>
+      <a class="foot" id="link-siever" href="https://github.com/RP-12000/Mass-Prime-Siever">Get Mass Prime Siever on GitHub →</a>
+    </article>
+    <article class="card way">
+      <div class="card-head"><h2>PRP tests on a CPU</h2><span class="pill muted" id="prp-pill">After the 10<sup>12</sup> sieve</span></div>
+      <div class="grow">
+        <p>Prime95 runs a base-3 Fermat test with Gerbicz error checking. This is where primes are found. It needs an x86 CPU; GPUs like the T4 are a poor fit for numbers this size.</p>
+        <div class="facts-list" id="way-prp">
+          <div><span>One test</span><span>≈ 50 core-minutes at n = 3.6M</span></div>
+          <div><span>Laptop</span><span>8 workers · ≈ 230 tests a day</span></div>
+        </div>
+      </div>
+      <a class="foot" id="link-prime95" href="https://www.mersenne.org/download/">Download Prime95 →</a>
+    </article>
+    <article class="card way">
+      <div class="card-head"><h2>A work server</h2><span class="pill muted">Planned</span></div>
+      <div class="grow">
+        <p>Until a server hands out work automatically, ranges are reserved by hand. The options being looked at are SRBase (BOINC), BOINC Central and a PRPNet server.</p>
+        <div class="facts-list">
+          <div><span>Now</span><span>reserve a range in a GitHub issue</span></div>
+          <div><span>Next</span><span>BOINC project or PRPNet server</span></div>
+        </div>
+      </div>
+      <a class="foot" id="link-issue" href="https://github.com/RP-12000/2n-25/issues/new">Open an issue →</a>
+    </article>
+  </section>
+
+  <section class="split" aria-label="How to take part">
+    <div class="card">
+      <h2>How to take a range</h2>
+      <ol class="steps">
+        <li><span class="i" aria-hidden="true">1</span><div><b>Reserve</b><span>Open a <a id="link-issue-2" href="https://github.com/RP-12000/2n-25/issues/new">GitHub issue</a> with the range you want, for example “PRP 3,600,000 – 3,610,000” or “sieve p 1–2 × 10<sup>12</sup>”. You get a worktodo file back.</span></div></li>
+        <li><span class="i" aria-hidden="true">2</span><div><b>Run</b><span>Put the file in Prime95 or Mass Prime Siever. The lines look like the examples here.</span></div></li>
+        <li><span class="i" aria-hidden="true">3</span><div><b>Send results</b><span>Upload Prime95’s <code>results.json.txt</code> with the first form below. Proof files are only needed when a test reports a probable prime; the form asks for them then. Sieve output (<code>results.json</code>, with <code>siever.log</code> if you have it) has its own form. Every factor in it is checked before an n is struck out, and overlapping work from several machines is merged, so it does no harm.</span></div></li>
+        <li><span class="i" aria-hidden="true">4</span><div><b>Get credit</b><span>Results appear on the exponent pages under the name you choose. A reported prime shows as being verified while the project re-runs the test; then it goes to the OEIS and the PRP Records list with your name.</span></div></li>
+      </ol>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <h2>Example work lines</h2>
+        <div class="seg" role="tablist" aria-label="Program">
+          <button type="button" role="tab" id="tab-prp" aria-selected="true" aria-controls="work-panel">Prime95</button>
+          <button type="button" role="tab" id="tab-sieve" aria-selected="false" aria-controls="work-panel">Mass Prime Siever</button>
+        </div>
+      </div>
+      <div id="work-panel" role="tabpanel" aria-labelledby="tab-prp">
+        <p class="small mt12" id="work-file">worktodo.txt for Prime95 30.19 or later</p>
+        <pre class="code" id="work-code">PRP=1,2,3600025,-25
+PRP=1,2,3600045,-25
+PRP=1,2,3600049,-25</pre>
+        <p id="work-hint">Each line tests 1 × 2<sup>n</sup> − 25. Prime95 writes one JSON line per test to results.json.txt; that file is what you upload.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" id="upload" aria-labelledby="upload-title">
+    <div class="card-head"><h2 id="upload-title">Upload Prime95 results</h2><span class="meta" id="up-status">checking the upload server…</span></div>
+    <p class="body">Send the <code>results.json.txt</code> that Prime95 or mprime writes, one JSON object per line. Only PRP and P-1 lines for 2<sup>n</sup> − 25 with n &lt; 10<sup>7</sup> are kept; anything else in the file is ignored. Large files are sent in parts of up to 1,000 lines.</p>
+    <form class="form" id="up-form" novalidate>
+      <div class="form-row">
+        <div class="field">
+          <label for="up-handle">Name for credit</label>
+          <input class="input" id="up-handle" name="handle" maxlength="40" autocomplete="nickname" placeholder="anonymous">
+          <span class="hint">Shown on the exponent pages. Letters, digits, spaces and . _ - ( ) [ ] + #</span>
+        </div>
+        <div class="field">
+          <label for="up-note">Note <span class="muted fw4">(optional)</span></label>
+          <input class="input" id="up-note" name="note" maxlength="500" placeholder="machine, range, anything we should know">
+          <span class="hint">Seen only by the project.</span>
+        </div>
+      </div>
+      <div class="field">
+        <label for="up-file">results.json.txt</label>
+        <div class="drop" id="up-drop">
+          <span>Drop the file here, or choose it:</span>
+          <input type="file" id="up-file" accept=".txt,.json,text/plain,application/json" multiple>
+        </div>
+      </div>
+      <div class="field">
+        <label for="up-paste">Or paste lines</label>
+        <textarea class="input" id="up-paste" rows="4" spellcheck="false" placeholder='{"status":"C","k":1,"b":2,"n":3600025,"c":-25,"worktype":"PRP-3","res64":"…",…}'></textarea>
+      </div>
+      <div id="up-preview" aria-live="polite"></div>
+      <div class="actions">
+        <button class="btn" type="submit" id="up-send" disabled>Upload</button>
+        <button class="btn ghost" type="button" id="up-clear">Clear</button>
+        <span class="small" id="up-progress" aria-live="polite"></span>
+      </div>
+    </form>
+    <div id="up-result" class="form" aria-live="polite"></div>
+  </section>
+
+  <section class="card" id="sieve-upload" aria-labelledby="tf-title">
+    <div class="card-head"><h2 id="tf-title">Upload sieve output</h2><span class="meta" id="tf-status">checking the upload server…</span></div>
+    <p class="body">Send the <code>results.json</code> that Mass Prime Siever writes, with <code>siever.log</code> from the same folder if you have it. Your browser first checks every factor: it must divide <span class="nw">2<sup>n</sup> − 25</span>, be prime and lie in the file’s p range, and every odd n must appear exactly once. Then only the n that have a factor are sent, and the server checks each factor again as it arrives.</p>
+    <form class="form" id="tf-form" novalidate>
+      <div class="form-row">
+        <div class="field">
+          <label for="tf-handle">Name for credit</label>
+          <input class="input" id="tf-handle" maxlength="40" autocomplete="nickname" placeholder="anonymous">
+          <span class="hint">Shown with the sieve work on the site.</span>
+        </div>
+        <div class="field">
+          <label for="tf-note">Note <span class="muted fw4">(optional)</span></label>
+          <input class="input" id="tf-note" maxlength="500" placeholder="GPU, Kaggle session, anything we should know">
+          <span class="hint">Seen only by the project.</span>
+        </div>
+      </div>
+      <div class="field">
+        <label for="tf-file">results.json and siever.log</label>
+        <div class="drop" id="tf-drop">
+          <span>Drop the files here, or choose them:</span>
+          <input type="file" id="tf-file" accept=".json,.log,.txt,application/json,text/plain" multiple>
+        </div>
+      </div>
+      <div id="tf-preview" aria-live="polite"></div>
+      <div class="meter" id="tf-meter" role="progressbar" aria-label="Upload progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><i style="width:0%"></i></div>
+      <div class="actions">
+        <button class="btn" type="submit" id="tf-send" disabled>Upload</button>
+        <button class="btn ghost" type="button" id="tf-clear">Clear</button>
+        <span class="small" id="tf-progress" aria-live="polite"></span>
+      </div>
+    </form>
+    <div id="tf-result" class="form" aria-live="polite"></div>
+  </section>
+
+  <section class="split" aria-label="About">
+    <div class="card">
+      <h2>About the project</h2>
+      <p class="body" id="about-text">The search looks for n where 2<sup>n</sup> − 25 is prime, sequence <a href="https://oeis.org/A379020">A379020</a> in the OEIS, and aims for a prime of about two million digits.</p>
+      <p><a href="history.html">Timeline, milestones and the work month by month →</a></p>
+    </div>
+    <div class="card" id="data">
+      <h2>Data files</h2>
+      <p>Every number on this site comes from static JSON files, rebuilt from the result files after each batch of work. They are free to reuse.</p>
+      <ul class="files">
+        <li><code>data/summary.json</code><span class="small muted">totals, frontier, latest results and daily counts</span></li>
+        <li><code>data/ranges.json</code><span class="small muted">one row per 0.2M of n: sieve depth, survivors, P-1 and PRP counts</span></li>
+        <li><code>data/primes.json</code><span class="small muted">every known n with how and when it was found</span></li>
+        <li><code>data/sieve.json</code><span class="small muted">P-1 factor sizes and the survivor constant per range</span></li>
+        <li><code>data/progress.json</code><span class="small muted">the big chart on the Status page: per 25,000 n, what the sieve, P-1 and PRP left, and P-1 factors by size</span></li>
+        <li><code>data/site.json</code><span class="small muted">plans, sieve assignments and notes written by hand</span></li>
+        <li><code>data/n/3.5.json</code><span class="small muted">one file per 0.1M of n: every sieve survivor with its P-1 and PRP records</span></li>
+      </ul>
+      <p><a id="link-repo" href="https://github.com/RP-12000/2n-25">Source, data and build script on GitHub →</a></p>
+      <h3 class="mt16">Thanks</h3>
+      <p>George Woltman’s Prime95 does every PRP test. Henri Lifchitz’s PRP Records list tracks the large results. Kaggle’s free GPUs carry the deep sieve.</p>
+    </div>
+  </section>

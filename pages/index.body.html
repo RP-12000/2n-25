@@ -1,0 +1,37 @@
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="hero-top"><span class="eyebrow">Probable-prime search · OEIS A379020</span><span class="mono" id="hero-stamp"></span></div>
+    <h1 id="hero-title">2<sup>n</sup> − 25</h1>
+    <p class="lede" id="hero-lede">Loading the latest numbers…</p>
+    <div class="big-wrap" id="big-wrap">
+      <div class="chart-scroll" id="bigchart"><p class="loading">Drawing every odd n below 10<sup>7</sup>…</p></div>
+      <div class="tip" id="big-tip" hidden></div>
+    </div>
+    <div class="legend" id="big-legend"></div>
+  </section>
+
+  <section class="tiles" aria-label="Key numbers" id="tiles"></section>
+
+  <section class="row">
+    <div class="card wide" id="now"></div>
+    <aside class="card narrow" id="outlook"></aside>
+  </section>
+
+  <section class="card" aria-labelledby="frontier-title">
+    <div class="card-head"><h2 id="frontier-title">Search frontier <span class="muted fw4" id="since-label"></span></h2><a class="meta" href="history.html">Full history since 2024 →</a></div>
+    <p>The largest X with every odd n &lt; X factored or PRP-tested.</p>
+    <div class="chart-scroll" id="frontier-chart"></div>
+    <div class="subhead"><h3>PRP results per day</h3><span class="mono small" id="daily-note"></span></div>
+    <div class="chart-scroll" id="daily-chart"></div>
+  </section>
+
+  <section class="row top">
+    <div class="card wide">
+      <div class="card-head"><h2>Latest results</h2><a class="meta" href="ranges.html">All ranges →</a></div>
+      <div class="table-wrap" id="latest"></div>
+    </div>
+    <div class="card narrow">
+      <div class="card-head"><h2>Largest known</h2><a class="meta" href="primes.html" id="all-primes-link">All primes →</a></div>
+      <ol class="toplist" id="toplist"></ol>
+      <p class="small" id="rank-note"></p>
+    </div>
+  </section>

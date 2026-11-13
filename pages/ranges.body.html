@@ -1,0 +1,26 @@
+  <div class="page-head">
+    <div>
+      <h1 class="title">Work distribution</h1>
+      <p class="lede">Status of every odd n below 10<sup>7</sup>. Even n never give primes, since 2<sup>2m</sup> − 25 = (2<sup>m</sup> − 5)(2<sup>m</sup> + 5).</p>
+    </div>
+    <div class="seg" role="group" aria-label="Group rows by">
+      <button type="button" id="by-1m" aria-pressed="true">1M rows</button>
+      <button type="button" id="by-02m" aria-pressed="false">0.2M rows</button>
+    </div>
+  </div>
+
+  <section class="card" aria-label="Totals">
+    <div class="totals" id="totals"><p class="loading">Loading…</p></div>
+    <div class="stackbar" id="stack" aria-hidden="true"></div>
+    <div class="legend" id="stack-legend"></div>
+  </section>
+
+  <section class="card" aria-label="Status by range of n">
+    <div class="table-wrap mt0" id="range-table"></div>
+  </section>
+
+  <section class="split three">
+    <div class="card"><h3>Sieve factor</h3><p id="note-sieve">A prime p below the sieve depth divides 2<sup>n</sup> − 25, so n is struck out before any other work.</p></div>
+    <div class="card"><h3>P-1 factor</h3><p id="note-pm1">Prime95 P-1 found a factor of a sieve survivor, so no PRP test was needed.</p></div>
+    <div class="card"><h3>Data files</h3><p><code>data/ranges.json</code> holds one row per 0.2M of n, and <code>data/n/</code> one file per 0.1M with every sieve survivor and its P-1 and PRP records. <a href="join.html#data">More about the data →</a></p></div>
+  </section>

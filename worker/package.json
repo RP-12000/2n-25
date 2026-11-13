@@ -1,0 +1,14 @@
+{
+  "name": "upload-2n-25",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker that receives Prime95 results for the 2^n-25 prime search",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "miniflare": "^4.0.0",
+    "wrangler": "^4.0.0"
+  }
+}

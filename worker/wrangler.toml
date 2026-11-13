@@ -1,0 +1,11 @@
+# Deploy with:  npx wrangler deploy
+# First time:   npx wrangler kv namespace create SUBMISSIONS   (paste the id below)
+#               npx wrangler secret put ADMIN_TOKEN
+name = "upload-2n-25"
+main = "worker.js"
+compatibility_date = "2026-07-01"
+workers_dev = true
+
+[[kv_namespaces]]
+binding = "SUBMISSIONS"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"

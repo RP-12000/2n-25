@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Known primes · 2ⁿ−25 Prime Search</title>
+<meta name="description" content="Every n for which 2^n − 25 is prime or probable prime, with discovery dates and expected counts.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="bar">
+    <div class="brand-nav">
+      <a class="brand" href="index.html"><span class="brand-mark">2<sup>n</sup>−25</span><span class="brand-sub">Prime Search</span></a>
+      <nav class="nav" aria-label="Main">
+        <a href="index.html">Status</a>
+        <a href="ranges.html">Ranges</a>
+        <a href="exponent.html">Exponents</a>
+        <a href="sieve.html">Sieve</a>
+        <a href="primes.html" aria-current="page">Primes</a>
+        <a href="history.html">History</a>
+        <a href="join.html">Join</a>
+      </nav>
+    </div>
+    <form class="lookup" role="search" action="exponent.html">
+      <label for="hdr-n">n =</label>
+      <input id="hdr-n" class="input" name="n" type="text" inputmode="numeric" placeholder="3600025" autocomplete="off">
+      <button class="btn" type="submit">Look up</button>
+    </form>
+  </div>
+</header>
+<main class="page" id="main">
+  <div class="page-head">
+    <div>
+      <h1 class="title">Known primes</h1>
+      <p class="lede" id="primes-lede">Every n for which 2<sup>n</sup> − 25 is prime or probable prime (OEIS <a href="https://oeis.org/A379020">A379020</a>).</p>
+    </div>
+  </div>
+
+  <section class="tiles" aria-label="Summary" id="primes-tiles"><p class="loading">Loading…</p></section>
+
+  <section class="card" aria-labelledby="count-title">
+    <div class="card-head"><h2 id="count-title">Primes found against the expected count</h2><span class="meta" id="count-meta"></span></div>
+    <div class="chart-scroll" id="count-chart"></div>
+    <div class="legend" id="count-legend"></div>
+  </section>
+
+  <section class="card" aria-labelledby="list-title">
+    <div class="card-head">
+      <h2 id="list-title">All known n</h2>
+      <div class="controls">
+        <div class="seg" role="group" aria-label="Order">
+          <button type="button" id="ord-desc" aria-pressed="true">Largest first</button>
+          <button type="button" id="ord-asc" aria-pressed="false">Smallest first</button>
+        </div>
+        <div class="seg" role="group" aria-label="Filter">
+          <button type="button" id="flt-all" aria-pressed="true">All</button>
+          <button type="button" id="flt-big" aria-pressed="false">≥ 10,000 digits</button>
+        </div>
+      </div>
+    </div>
+    <div class="table-wrap" id="prime-table"></div>
+    <p class="small mt12" id="prime-foot"></p>
+  </section>
+
+  <section class="split">
+    <div class="card">
+      <h2>Which n can work</h2>
+      <p>Only odd n: for even n, 2<sup>n</sup> − 25 = (2<sup>n/2</sup> − 5)(2<sup>n/2</sup> + 5). And n ≡ 5 (mod 6) gives 2<sup>n</sup> ≡ 4 ≡ 25 (mod 7), so 7 divides it; n = 5 is the one exception, where 2<sup>5</sup> − 25 = 7 itself.</p>
+      <div id="mod6"></div>
+    </div>
+    <div class="card">
+      <h2>Spacing</h2>
+      <p id="spacing-text"></p>
+      <div class="kv" id="spacing-kv"></div>
+    </div>
+    <div class="card">
+      <h2>Prime or probable prime</h2>
+      <p id="prp-text">Each entry from n = 33 up passed a base-3 Fermat test (PRP-3) in Prime95 with Gerbicz error checking. 2<sup>n</sup> − 25 has no large factored part in N − 1 or N + 1, so the large ones cannot be proven prime with today's methods; the small ones can be proven with ECPP.</p>
+    </div>
+    <div class="card">
+      <h2>What the next one would mean</h2>
+      <p id="next-text"></p>
+      <div class="kv" id="next-kv"></div>
+    </div>
+  </section>
+</main>
+<footer class="site-footer">
+  <div class="bar">
+    <span>Built from Prime95 results.json, P-1 logs and sieve output · data <span data-generated>…</span></span>
+    <span class="links"><a href="https://github.com/RP-12000/2n-25">Source and data</a><a href="https://oeis.org/A379020">OEIS A379020</a><a href="http://www.primenumbers.net/prptop/prptop.php">PRP Records</a></span>
+  </div>
+</footer>
+<script src="assets/app.js"></script>
+<script src="assets/primes.js"></script>
+</body>
+</html>

@@ -1,0 +1,246 @@
+{
+  "_about": "Hand-written facts and plans for the website. tools/build.py copies this into data/site.json. Edit it when plans change, then rebuild. confirmed_primes: n of probable primes reported in uploads that you have re-tested; until then the site shows them as being verified. accepted_sieve_uploads: ids of uploaded sieve slices (Submissions/<id>/TF) to count toward the sieve depth even though they found fewer factors than expected; their checked factors strike n out either way. status_since: the Status page draws the frontier and PRP results per day from this date; the History page keeps the whole story.",
+  "credit": "RP-12000",
+  "oeis": "A379020",
+  "links": {
+    "repo": "https://github.com/RP-12000/2n-25",
+    "issues": "https://github.com/RP-12000/2n-25/issues/new",
+    "siever": "https://github.com/RP-12000/Mass-Prime-Siever",
+    "oeis": "https://oeis.org/A379020",
+    "prp_records": "http://www.primenumbers.net/prptop/prptop.php",
+    "prime95": "https://www.mersenne.org/download/"
+  },
+  "upload_endpoint": "https://upload-2n-25.kelvinizer.workers.dev",
+  "model": {
+    "C": 2.72,
+    "intercept": -4.29,
+    "survivor_K": 2.12,
+    "prp_core_minutes_at_3600000": 50,
+    "prp_cost_exponent": 2.1,
+    "laptop_prp_per_day": 230,
+    "note": "Expected primes in [a, b) is about C * ln(b / a). Sieve survivors fall like K / ln p."
+  },
+  "record": {
+    "label": "10^1036183 + 9",
+    "digits": 1036184,
+    "beats_from_n": 3442129
+  },
+  "goal": {
+    "digits": 2000000,
+    "from_n": 6643853
+  },
+  "sieve_target": 100000000000000,
+  "prp_from_depth": 1000000000000,
+  "active": {
+    "lo": 3600000,
+    "hi": 5000000,
+    "badge": "Sieving next",
+    "note": "700,000 odd n, never sieved before. Any prime found here is larger than our record 10^1036183 + 9 (1,036,184 digits)."
+  },
+  "stages": [
+    {
+      "state": "next",
+      "tag": "1 · next",
+      "title": "Sieve p < 10^12",
+      "where": "Laptop · Radeon 780M + 15 threads · OpenCL",
+      "figure": "≈ 53,700 left"
+    },
+    {
+      "state": "planned",
+      "tag": "2 · planned",
+      "title": "Sieve 10^12 → 10^13",
+      "where": "Kaggle · 2 × T4 · CUDA",
+      "figure": "≈ 49,600 left"
+    },
+    {
+      "state": "planned",
+      "tag": "3 · planned",
+      "title": "Sieve 10^13 → 10^14",
+      "where": "Kaggle · weekly 11.5-hour sessions",
+      "figure": "≈ 46,000 left"
+    },
+    {
+      "state": "planned",
+      "tag": "4 · at 10^12",
+      "title": "PRP, smallest n first",
+      "where": "Prime95 PRP-3 · ≈ 50 core-minutes each",
+      "figure": "≈ 230 tests / day"
+    }
+  ],
+  "sieve_plan": [
+    {
+      "p_from": 0,
+      "p_to": 1000000000000,
+      "machine": "Laptop · Radeon 780M + 15 threads",
+      "backend": "OpenCL",
+      "status": "Next",
+      "survivors": "≈ 53,700"
+    },
+    {
+      "p_from": 1000000000000,
+      "p_to": 10000000000000,
+      "machine": "Kaggle · 2 × T4",
+      "backend": "CUDA",
+      "status": "Planned",
+      "survivors": "≈ 49,600"
+    },
+    {
+      "p_from": 10000000000000,
+      "p_to": 100000000000000,
+      "machine": "Kaggle · 2 × T4, weekly sessions",
+      "backend": "CUDA",
+      "status": "Planned",
+      "survivors": "≈ 46,000"
+    }
+  ],
+  "benchmarks": {
+    "setup": "Mass Prime Siever 12.0 · p in [950G, 951G) · odd n in [3.6M, 10M)",
+    "rows": [
+      [
+        "GPU + 15 CPU threads",
+        18.1
+      ],
+      [
+        "Kaggle T4 · CUDA",
+        18.2
+      ],
+      [
+        "Kaggle T4 · OpenCL",
+        18.8
+      ],
+      [
+        "Radeon 780M only",
+        27.5
+      ],
+      [
+        "16 CPU threads",
+        39.6
+      ],
+      [
+        "Kaggle 4-core CPU",
+        361
+      ]
+    ],
+    "note": "About 115 × faster than version 11.2 on the same laptop."
+  },
+  "siever_versions": [
+    {
+      "program": "2^n-25 Siever 1.0",
+      "first_run": "2024-12-13",
+      "lo": 0,
+      "hi": 1400000,
+      "depth": "10^7 – 2.6×10^9",
+      "hardware": "CPU, 4–8 threads"
+    },
+    {
+      "program": "2^n-25 Siever 1.1",
+      "first_run": "2024-12-19",
+      "lo": 1400000,
+      "hi": 2400000,
+      "depth": "1.6×10^9 – 3.0×10^9",
+      "hardware": "CPU, 4 threads"
+    },
+    {
+      "program": "2^n-25 Siever 2.0",
+      "first_run": "2025-02-01",
+      "lo": 2400000,
+      "hi": 3200000,
+      "depth": "3.0×10^9",
+      "hardware": "CPU, 4–6 threads"
+    },
+    {
+      "program": "2^n-25 Siever 3.0",
+      "first_run": "2025-04-26",
+      "lo": 3200000,
+      "hi": 3600000,
+      "depth": "2^32 ≈ 4.3×10^9",
+      "hardware": "CPU, 3 stations in parallel"
+    },
+    {
+      "program": "Mass Prime Siever 12.0",
+      "first_run": "2026-11",
+      "lo": 3600000,
+      "hi": null,
+      "depth": "10^12 → 10^14",
+      "hardware": "CPU + OpenCL + CUDA"
+    }
+  ],
+  "range_overrides": {
+    "2400000": {
+      "sieve_depth": 3037000000
+    }
+  },
+  "small_primes": [
+    {
+      "n": 5,
+      "note": "a(1), added to OEIS 2025-05-28"
+    },
+    {
+      "n": 7,
+      "note": "checked directly"
+    },
+    {
+      "n": 9,
+      "note": "checked directly"
+    },
+    {
+      "n": 13,
+      "note": "checked directly"
+    }
+  ],
+  "prime_notes": {
+    "647545": "first found by this project",
+    "824325": "first found by this project",
+    "1538959": "first found by this project",
+    "2020893": "first found by this project",
+    "2421175": "first found by this project · largest known"
+  },
+  "confirmed_primes": [],
+  "accepted_sieve_uploads": [],
+  "ranks": {
+    "date": "2025-12-31",
+    "values": {
+      "647545": "#2872",
+      "824325": "#1899",
+      "1538959": "#650",
+      "2020893": "#274",
+      "2421175": "#209"
+    }
+  },
+  "timeline": [
+    [
+      "2024-12-13",
+      "Search starts; 25 primes from n = 33 to 212,295 the first evening. A379020 created."
+    ],
+    [
+      "2024-12-31",
+      "n = 1,538,959, the first prime of the form above 1M."
+    ],
+    [
+      "2025-02-14",
+      "n = 2,421,175 (728,847 digits), the largest known."
+    ],
+    [
+      "2025-06-10",
+      "PRP testing pauses at n ≈ 3.4M."
+    ],
+    [
+      "2026-04-20",
+      "Every n below 3,600,000 resolved; no new prime since 2,421,175."
+    ],
+    [
+      "2026-11",
+      "Mass Prime Siever 12.0 adds CUDA and OpenCL; P-1 dropped in favour of a deeper sieve."
+    ],
+    [
+      "next",
+      "Sieve 3.6M – 5M to 10^12, start PRP from 3.6M, keep sieving to 10^14 on Kaggle."
+    ]
+  ],
+  "pause": {
+    "from": "2025-06-10",
+    "to": "2026-03-21",
+    "label": "paused · 10ⁿ + 9 search"
+  },
+  "status_since": "2026-11-01"
+}

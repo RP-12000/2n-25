@@ -1,0 +1,12 @@
+# local copy of the project archive made by tools/sync_archive.py; build.py reads it, never published
+archive/
+# written by tools/build.py next to data/; lists archive paths, not for publishing
+build_report.txt
+__pycache__/
+*.pyc
+# Worker tooling
+worker/node_modules/
+worker/.wrangler/
+# never commit the upload admin token
+upload_admin_token.txt
+.dev.vars

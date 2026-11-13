@@ -1,0 +1,42 @@
+  <section class="page-head">
+    <div>
+      <h1 class="title">History</h1>
+      <p class="lede" id="hist-lede">How the search got from n = 33 to every odd n below 3.6 million: the frontier, the work done each day and the primes along the way.</p>
+    </div>
+  </section>
+
+  <section class="tiles" aria-label="Records" id="hist-tiles"></section>
+
+  <section class="card" aria-labelledby="hist-frontier-title">
+    <div class="card-head"><h2 id="hist-frontier-title">Search frontier</h2><span class="meta">largest X with every odd n &lt; X factored or PRP-tested</span></div>
+    <div class="chart-scroll" id="hist-frontier"></div>
+    <div class="legend">
+      <span><i class="key line-accent" aria-hidden="true"></i>Frontier</span>
+      <span><i class="key dot" aria-hidden="true"></i>Prime found (date, n)</span>
+      <span><i class="key band" aria-hidden="true"></i><span id="hist-pause-key">Pause</span></span>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="hist-work-title">
+    <div class="card-head"><h2 id="hist-work-title">Work per day</h2><span class="meta">log scale</span></div>
+    <div class="subhead first"><h3>PRP results</h3><span class="mono small" id="hist-prp-note"></span></div>
+    <div class="chart-scroll" id="hist-prp"></div>
+    <div class="subhead"><h3>P-1 runs</h3><span class="mono small" id="hist-pm1-note"></span></div>
+    <div class="chart-scroll" id="hist-pm1"></div>
+  </section>
+
+  <section class="row top">
+    <div class="card wide">
+      <div class="card-head"><h2>Month by month</h2><span class="meta">results by the date Prime95 wrote them (UTC)</span></div>
+      <div class="table-wrap" id="hist-months"></div>
+    </div>
+    <div class="card narrow">
+      <div class="card-head"><h2>Frontier milestones</h2></div>
+      <div class="table-wrap" id="hist-milestones"></div>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="hist-timeline-title">
+    <div class="card-head"><h2 id="hist-timeline-title">Timeline</h2><a class="meta" href="primes.html">All primes →</a></div>
+    <ol class="timeline" id="timeline"></ol>
+  </section>
