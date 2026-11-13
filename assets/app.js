@@ -428,6 +428,85 @@
     return out.join('');
   };
 
+  /* ---------- hover, tap and keyboard readout for the column charts (Status, History) ----------
+     o: wrap and tip (elements), w and h (viewBox size), L and R (plot edges), cols, colX(column) -> x,
+     start (column shown when the chart gets keyboard focus), fill(column, y in viewBox units or null) fills o.tip */
+  Site.columnHover = function (svg, o) {
+    var xh = svg.querySelector('.xhair'), cur = -1;
+    function locate(e) {
+      var r = svg.getBoundingClientRect();
+      var sx = (e.clientX - r.left) / r.width * o.w, sy = (e.clientY - r.top) / r.height * o.h;
+      return { col: Math.floor((sx - o.L) / (o.R - o.L) * o.cols), y: sy };
+    }
+    function show(col, sy, cx, cy) {
+      if (col < 0 || col >= o.cols) { hide(); return; }
+      cur = col;
+      var x = Site.r1(o.colX(col + 0.5));
+      xh.setAttribute('x1', x); xh.setAttribute('x2', x); xh.setAttribute('visibility', 'visible');
+      o.tip.textContent = '';
+      o.fill(col, sy);
+      o.tip.hidden = false;
+      var wr = o.wrap.getBoundingClientRect(), tw = o.tip.offsetWidth, th = o.tip.offsetHeight;
+      var lx = cx - wr.left + 16;
+      if (lx + tw > wr.width) lx = cx - wr.left - 16 - tw;
+      lx = Math.max(0, Math.min(lx, wr.width - tw));
+      var ty = Math.max(0, Math.min(cy - wr.top - th / 2, wr.height - th));
+      o.tip.style.left = Math.round(lx) + 'px';
+      o.tip.style.top = Math.round(ty) + 'px';
+    }
+    function hide() {
+      o.tip.hidden = true;
+      xh.setAttribute('visibility', 'hidden');
+    }
+    function showAtColumn(col) {
+      var r = svg.getBoundingClientRect();
+      show(col, null, r.left + (o.colX(col + 0.5) / o.w) * r.width, r.top + r.height * 0.3);
+    }
+    svg.addEventListener('pointermove', function (e) { var a = locate(e); show(a.col, a.y, e.clientX, e.clientY); });
+    svg.addEventListener('pointerdown', function (e) { var a = locate(e); show(a.col, a.y, e.clientX, e.clientY); });
+    svg.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') hide(); });
+    svg.addEventListener('focus', function () { showAtColumn(cur >= 0 ? cur : Math.max(0, Math.min(o.cols - 1, o.start || 0))); });
+    svg.addEventListener('blur', hide);
+    svg.addEventListener('keydown', function (e) {
+      var step = e.shiftKey ? 10 : 1, to = cur < 0 ? 0 : cur;
+      if (e.key === 'ArrowRight') to = Math.min(o.cols - 1, to + step);
+      else if (e.key === 'ArrowLeft') to = Math.max(0, to - step);
+      else if (e.key === 'Home') to = 0;
+      else if (e.key === 'End') to = o.cols - 1;
+      else if (e.key === 'Escape') { hide(); return; }
+      else return;
+      e.preventDefault();
+      showAtColumn(to);
+    });
+  };
+  /* The readout's heading and table; returns add(value, label, key) for its rows and note(text, cls) for a line below. */
+  Site.tipTable = function (tip, head) {
+    var h = document.createElement('div');
+    h.className = 'tip-head';
+    h.textContent = head;
+    tip.appendChild(h);
+    var table = document.createElement('table'), tb = document.createElement('tbody');
+    table.appendChild(tb);
+    tip.appendChild(table);
+    return {
+      add: function (value, label, key) {
+        var tr = document.createElement('tr'), a = document.createElement('td'), b = document.createElement('td');
+        a.className = 'v'; b.className = 'l';
+        a.textContent = value;
+        if (key) { var i = document.createElement('i'); i.className = 'lk ' + key; b.appendChild(i); }
+        b.appendChild(document.createTextNode(label));
+        tr.appendChild(a); tr.appendChild(b);
+        tb.appendChild(tr);
+      },
+      note: function (text, cls) {
+        var p = document.createElement('p');
+        if (cls) p.className = cls;
+        p.textContent = text;
+        tip.appendChild(p);
+      }
+    };
+  };
+
   /* ---------- page chrome ---------- */
   function initLookup() {
     var forms = document.querySelectorAll('form.lookup');

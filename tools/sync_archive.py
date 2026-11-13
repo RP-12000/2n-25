@@ -11,8 +11,9 @@ instead. For every Ranges/<a>M~<b>M folder it copies:
   PRP/         results.json.txt
 
 and Submissions/ (uploads saved by tools/pull_submissions.py). No proof file is copied: the PRP proofs
-and everything else stay on the archive drive. The range folders are named <a>M-<b>M here, because some
-tools cannot open a path with "~" followed by a digit; the files inside keep their names.
+and everything else stay on the archive drive. The range folders are named <a>M-<b>M here, and a "~"
+followed by a digit in a folder below them becomes "-" too (TF/p 10T~12.5T -> TF/p 10T-12.5T), because
+some tools cannot open such a path; file names stay as they are.
 
 A file is copied when it is new or its size or modification time changed. Nothing is ever deleted, on
 either side. If the copy in archive/ is newer than the one on the drive, it is left alone and listed, so
@@ -47,6 +48,11 @@ def local_name(name):
     """3.4M~3.6M -> 3.4M-3.6M"""
     m = RANGE_DIR.match(name)
     return f"{m.group(1)}M-{m.group(2)}M"
+
+
+def local_parts(parts):
+    """Folders below a range folder: "~" before a digit becomes "-" (p 10T~12.5T -> p 10T-12.5T)."""
+    return [re.sub(r"~(?=\d)", "-", p) for p in parts[:-1]] + parts[-1:]
 
 
 def wanted(parts):
@@ -124,7 +130,7 @@ def main():
     for name in names:
         for path, parts in walk_files(os.path.join(ranges, name)):
             if wanted(parts):
-                c.copy(path, os.path.join(args.dest, "Ranges", local_name(name), *parts))
+                c.copy(path, os.path.join(args.dest, "Ranges", local_name(name), *local_parts(parts)))
     subs = os.path.join(args.source, "Submissions")
     proofs = 0
     if os.path.isdir(subs):

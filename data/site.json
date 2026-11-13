@@ -30,37 +30,31 @@
  },
  "sieve_target": 100000000000000,
  "prp_from_depth": 1000000000000,
+ "exponent_start_after": 3600000,
  "active": {
   "lo": 3600000,
   "hi": 5000000,
-  "badge": "Sieving next",
+  "badge": "Sieving",
   "note": "700,000 odd n, never sieved before. Any prime found here is larger than our record 10^1036183 + 9 (1,036,184 digits)."
  },
  "stages": [
   {
    "state": "next",
-   "tag": "1 · next",
-   "title": "Sieve p < 10^12",
+   "tag": "1 · running",
+   "title": "Sieve p < 10^13",
    "where": "Laptop · Radeon 780M + 15 threads · OpenCL",
-   "figure": "≈ 53,700 left"
-  },
-  {
-   "state": "planned",
-   "tag": "2 · planned",
-   "title": "Sieve 10^12 → 10^13",
-   "where": "Kaggle · 2 × T4 · CUDA",
    "figure": "≈ 49,600 left"
   },
   {
    "state": "planned",
-   "tag": "3 · planned",
+   "tag": "2 · in part",
    "title": "Sieve 10^13 → 10^14",
-   "where": "Kaggle · weekly 11.5-hour sessions",
+   "where": "Kaggle · 4 × T4 · CUDA: 10^13 – 2.45 × 10^13 done",
    "figure": "≈ 46,000 left"
   },
   {
    "state": "planned",
-   "tag": "4 · at 10^12",
+   "tag": "3 · at 10^12",
    "title": "PRP, smallest n first",
    "where": "Prime95 PRP-3 · ≈ 50 core-minutes each",
    "figure": "≈ 230 tests / day"
@@ -69,25 +63,25 @@
  "sieve_plan": [
   {
    "p_from": 0,
-   "p_to": 1000000000000,
+   "p_to": 10000000000000,
    "machine": "Laptop · Radeon 780M + 15 threads",
    "backend": "OpenCL",
-   "status": "Next",
-   "survivors": "≈ 53,700"
-  },
-  {
-   "p_from": 1000000000000,
-   "p_to": 10000000000000,
-   "machine": "Kaggle · 2 × T4",
-   "backend": "CUDA",
-   "status": "Planned",
+   "status": "Running",
    "survivors": "≈ 49,600"
   },
   {
    "p_from": 10000000000000,
-   "p_to": 100000000000000,
-   "machine": "Kaggle · 2 × T4, weekly sessions",
+   "p_to": 24500000000000,
+   "machine": "Kaggle · 4 × T4",
    "backend": "CUDA",
+   "status": "Done",
+   "survivors": "≈ 48,100"
+  },
+  {
+   "p_from": 24500000000000,
+   "p_to": 100000000000000,
+   "machine": "Not assigned yet",
+   "backend": "—",
    "status": "Planned",
    "survivors": "≈ 46,000"
   }

@@ -14,7 +14,7 @@ PAGES = [
     ('exponent.html', 'exponents', 'Exponent · 2ⁿ−25 Prime Search', 'Everything known about one value of n: factors, PRP residue, history.', 'exponent'),
     ('sieve.html', 'sieve', 'Sieve · 2ⁿ−25 Prime Search', 'Sieve depth by range, candidates left, P-1 factor sizes and the siever versions used.', 'sieve'),
     ('primes.html', 'primes', 'Known primes · 2ⁿ−25 Prime Search', 'Every n for which 2^n − 25 is prime or probable prime, with discovery dates and expected counts.', 'primes'),
-    ('history.html', 'history', 'History · 2ⁿ−25 Prime Search', 'How the search got here: the frontier day by day, work per day and month, milestones and the primes found along the way.', 'history'),
+    ('history.html', 'history', 'History · 2ⁿ−25 Prime Search', 'How the search got here: the frontier day by day, work per day and month, the sieve depth and P-1 factor sizes, milestones and the primes found along the way.', 'history'),
     ('join.html', 'join', 'Join · 2ⁿ−25 Prime Search', 'How to help: sieve on a GPU, run PRP tests with Prime95, upload results.', 'join'),
 ]
 NAV = [('status', 'index.html', 'Status'), ('ranges', 'ranges.html', 'Ranges'), ('exponents', 'exponent.html', 'Exponents'),
@@ -72,6 +72,6 @@ for p in PAGES:
     src = os.path.join(HERE, p[0].replace('.html', '.body.html'))
     if not os.path.exists(src):
         print('skip', p[0]); continue
-    with open(os.path.join(OUT, p[0]), 'w', encoding='utf-8') as f:
+    with open(os.path.join(OUT, p[0]), 'w', encoding='utf-8', newline='\n') as f:  # LF on Windows too
         f.write(page(*p))
     print('wrote', p[0])

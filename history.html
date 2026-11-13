@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>History · 2ⁿ−25 Prime Search</title>
-<meta name="description" content="How the search got here: the frontier day by day, work per day and month, milestones and the primes found along the way.">
+<meta name="description" content="How the search got here: the frontier day by day, work per day and month, the sieve depth and P-1 factor sizes, milestones and the primes found along the way.">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -60,6 +60,16 @@
     <div class="chart-scroll" id="hist-prp"></div>
     <div class="subhead"><h3>P-1 runs</h3><span class="mono small" id="hist-pm1-note"></span></div>
     <div class="chart-scroll" id="hist-pm1"></div>
+  </section>
+
+  <section class="card" id="sieve-pm1" aria-labelledby="hist-sieve-title">
+    <div class="card-head"><h2 id="hist-sieve-title">Sieve depth and P-1 factor sizes</h2><span class="meta">every odd n below 10<sup>7</sup>, columns of 25,000 n</span></div>
+    <p id="hist-sieve-lede">Loading…</p>
+    <div class="big-wrap" id="pm1-wrap">
+      <div class="chart-scroll" id="pm1-chart"></div>
+      <div class="tip" id="pm1-tip" hidden></div>
+    </div>
+    <div class="legend" id="pm1-legend"></div>
   </section>
 
   <section class="row top">

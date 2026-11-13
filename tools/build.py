@@ -17,7 +17,10 @@ on the archive drive or <a>M-<b>M as in archive/):
   Ranges/<a>M~<b>M/TF/            sieve, either the old CPU sievers (origin.txt, override.txt, log.txt,
                                   worktodo_general*.txt, or Station N/ subfolders with the same files)
                                   or Mass Prime Siever 12.0 (results.json and siever.log, any number of
-                                  subfolders, one per machine or p slice; every factor is checked)
+                                  subfolders, one per machine or p slice, e.g. TF/p 10T~12.5T/; every
+                                  factor is checked). A run split over several range folders keeps its
+                                  siever.log in each; its run time is shared out evenly between them.
+                                  Slices that do not start at p <= 7 yet are shown as a partial sieve.
   Ranges/<a>M~<b>M/Candidates/    *.txt work lines; the 3rd comma field is n
   Ranges/<a>M~<b>M/Pm1/results.json.txt
   Ranges/<a>M~<b>M/PRP/results.json.txt
@@ -40,6 +43,7 @@ Only the Python standard library is used.
 """
 
 import argparse
+import base64
 import bisect
 import collections
 import datetime
@@ -52,6 +56,7 @@ import re
 import statistics
 import sys
 import time
+import zlib
 
 N_MAX = 10_000_000
 ROW = 200_000          # one row of the Ranges table
@@ -97,6 +102,70 @@ class Notes:
 def read_text(path):
     with open(path, encoding="utf-8", errors="replace") as f:
         return f.read()
+
+
+def read_layers(path, notes):
+    """content/sieve_layers.json (made by tools/sieve_layers.c): per column of BUCKET n, how many odd n have
+    their smallest factor in each power of ten, up to a limit. Returns {column: (limit, [count, ...])}."""
+    if not os.path.exists(path):
+        notes.add("no sieve_layers.json: the Status chart shows no factor sizes outside Mass Prime Siever ranges", path)
+        return {}
+    try:
+        doc = json.loads(read_text(path))
+        if doc.get("bucket") != BUCKET:
+            notes.add("sieve_layers.json has another column width (not used)", f"{doc.get('bucket')} != {BUCKET}")
+            return {}
+        return {c: (int(col["limit"]), [int(x) for x in col["by_decade"]]) for c, col in enumerate(doc["columns"])}
+    except (ValueError, KeyError, TypeError):
+        notes.add("unreadable sieve_layers.json (not used)", path)
+        return {}
+
+
+def decade(p):
+    """k with 10^k <= p < 10^(k+1)."""
+    return len(str(p)) - 1
+
+
+def merge_spans(spans):
+    """[[a, b], ...] for the union of half-open intervals."""
+    out = []
+    for a, b in sorted(spans):
+        if out and a <= out[-1][1]:
+            out[-1][1] = max(out[-1][1], b)
+        else:
+            out.append([a, b])
+    return out
+
+
+def read_trial_left(path, notes):
+    """content/trial_left.json (made by tools/trial_left.py): the odd n in [lo, hi) with no prime factor below
+    `limit`, as a bitmap. Lets the Status chart place the factors of a sieve that has not reached the small
+    primes yet. Returns (lo, hi, limit, bytes) or None."""
+    if not os.path.exists(path):
+        return None
+    try:
+        doc = json.loads(read_text(path))
+        bits = zlib.decompress(base64.b64decode(doc["bits"]))
+        lo, hi, limit = int(doc["lo"]), int(doc["hi"]), int(doc["limit"])
+        if len(bits) * 8 < (hi - lo) // 2:
+            raise ValueError
+        return lo, hi, limit, bits
+    except (ValueError, KeyError, TypeError, zlib.error):
+        notes.add("unreadable trial_left.json (not used)", path)
+        return None
+
+
+def trial_left_n(tl, lo, hi):
+    """The odd n in [lo, hi) with no factor below tl's limit, or None when tl does not cover [lo, hi)."""
+    if not tl or lo < tl[0] or hi > tl[1]:
+        return None
+    t_lo, bits = tl[0], tl[3]
+    out = []
+    for n in range(max(lo, 5) | 1, hi, 2):
+        i = (n - t_lo) // 2
+        if bits[i >> 3] >> (i & 7) & 1:
+            out.append(n)
+    return out
 
 
 def read_lines(path):
@@ -522,7 +591,8 @@ def check_mps(entries, lo, hi, notes):
     Every factor in "factored" is checked: P0 <= p < P1, p divides 2^n - 25, p is not 2^n - 25 itself, and
     p is prime. An n counts as removed only when at least one of its factors checks out. Survivors are the
     odd n covered by a slice that starts at p <= 7, minus the removed ones. Returns (survivors, smallest
-    checked factor per removed n, per-row sieve info, uploader of each removed n's factor).
+    checked factor per removed n, per-row sieve info, uploader of each removed n's factor, partial rows: the
+    rows sieved over some p ranges but not from p <= 7 yet).
 
     The depth of a row is the largest P reached from p <= 7 by slices that join up, taken over every part of
     the row (slices may cover only part of a row's n). Uploaded slices count only when e["depth_ok"]."""
@@ -581,7 +651,7 @@ def check_mps(entries, lo, hi, notes):
     for a, b in spans:
         survivors.update(n for n in range(a | 1, b, 2) if n not in removed)
 
-    rows, gaps = [], set()
+    rows, part, gaps = [], [], set()
     depth_entries = [e for e in entries if e.get("depth_ok", True)]
     for r_lo in range(lo - lo % ROW, hi, ROW):
         a, b = max(r_lo, lo, 5), min(r_lo + ROW, hi)
@@ -597,7 +667,8 @@ def check_mps(entries, lo, hi, notes):
             reach, piece = MPS_BASE_P, None
             for p0, p1, k in cover:
                 if p0 > reach:
-                    gaps.add((touching[k]["path"], reach, p0))
+                    if base:                 # with no slice from p <= 7 at all, the note above says it already
+                        gaps.add((touching[k]["path"], reach, p0))
                     break
                 if piece is None or p1 > piece:
                     piece = reach = p1
@@ -607,6 +678,12 @@ def check_mps(entries, lo, hi, notes):
                 break
             depth = piece if depth is None else min(depth, piece)
         if not whole or depth is None:
+            # not sieved from the smallest primes yet: the p ranges done over the whole row so far
+            over = [e for e in depth_entries if e["n0"] <= a and e["n1"] >= b]
+            if over:
+                part.append({"lo": max(r_lo, lo), "hi": min(r_lo + ROW, hi), "p": merge_spans((e["p0"], e["p1"]) for e in over),
+                             "factored": sum(1 for n in range(a | 1, b, 2) if n in removed),
+                             "end": max((e["time"][:19] for e in over if e["time"]), default=None)})
             continue
         # one run may be split over several entries or uploads: count its time once
         runs = {}
@@ -618,14 +695,15 @@ def check_mps(entries, lo, hi, notes):
         info = {"depth": depth, "program": logs[0]["program"] if logs else "Mass Prime Siever 12.0",
                 "start": min((g["start"] for g in logs if g["start"]), default=None),
                 "end": max((g["end"] for g in logs if g["end"]), default=None) or max((e["time"][:19] for e in used.values() if e["time"]), default=None),
-                "cpu_s": round(sum(g["wall_s"] for g in logs)), "stations": len({e["path"] for e in used.values()})}
+                "cpu_s": round(sum(g["wall_s"] for g in logs)), "stations": len({e["path"] for e in used.values()}),
+                "_runs": list(runs)}           # Archive.scan shares a run's time between the rows it covers
         who = sorted({e["who"] for e in used.values() if e.get("who")})
         if who:
             info["by"] = who
         rows.append({"lo": max(r_lo, lo), "hi": min(r_lo + ROW, hi), "info": info})
     for path, reach, p0 in sorted(gaps):
         notes.add("gap in the sieved p range", f"{path}: nothing between {reach} and {p0}")
-    return survivors, removed, rows, removed_by
+    return survivors, removed, rows, removed_by, part
 
 
 def read_results(path, notes):
@@ -681,9 +759,13 @@ class Archive:
         self.prime_records = {}
         self.sieve_factors = {}              # n -> checked Mass Prime Siever factor above TRIAL_LIMIT
         self.sieve_factor_by = {}            # n -> index in users, when that factor came from an upload
+        self.sieve_smallest = {}             # n -> smallest checked Mass Prime Siever factor, any size
+        self.mps_spans = []                  # [(lo, hi)] rows sieved by Mass Prime Siever
         self.accepted_uploads = set()        # uploaded sieve slices to count toward the depth (content/site.json)
         self.uploads = []                    # uploaded sieve entries
         self.uploads_seen = set()            # id() of uploaded entries that met a range folder
+        self.uploads_archived = set()        # uploads whose slices the archive keeps too (counted once)
+        self.partial = []                    # rows sieved over some p ranges, not from p <= 7 yet
         self.confirmed = set()               # uploaded probable primes the project has re-tested (content/site.json)
         self.reported = {}                   # n -> who, uploaded probable primes not confirmed yet
 
@@ -707,6 +789,12 @@ class Archive:
             names.append((lo, hi, name))
         for lo, hi, name in sorted(names):
             self.scan_range(lo, hi, os.path.join(ranges_root, name))
+        # a run split over several range folders keeps its log in each: share its time out evenly
+        uses = collections.Counter(k for d in self.dirs if d.get("sieve") for k in d["sieve"].get("_runs", ()))
+        for d in self.dirs:
+            s = d.get("sieve")
+            if s and "_runs" in s:
+                s["cpu_s"] = round(sum((k[3] or 0) / uses[k] for k in s.pop("_runs")))
         for e in self.uploads:
             if id(e) not in self.uploads_seen:
                 self.notes.add("uploaded sieve output for n outside every range folder (not used)", f"{e['upload']}: n {e['n0']}-{e['n1']}")
@@ -720,11 +808,21 @@ class Archive:
         mps = mps_entries(tf, self.notes) if os.path.isdir(tf) else []
         extra = [e for e in self.uploads if e["n0"] < hi and e["n1"] > lo]
         self.uploads_seen.update(id(e) for e in extra)
+        if mps:
+            # an upload whose p range over these n the archive keeps too (the project's own Kaggle runs) counts once
+            kept = [e for e in extra if any(o["p0"] <= e["p0"] and o["p1"] >= e["p1"] and o["n0"] <= max(e["n0"], lo)
+                                            and o["n1"] >= min(e["n1"], hi) for o in mps)]
+            self.uploads_archived.update(e["upload"] for e in kept)
+            kept_ids = {id(e) for e in kept}
+            extra = [e for e in extra if id(e) not in kept_ids]
         survivors = set()
         if mps:
             # Mass Prime Siever 12.0: merge the slices (and uploaded ones), checking every factor
-            survivors, removed, mps_rows, removed_by = check_mps(mps + extra, lo, hi, self.notes)
+            survivors, removed, mps_rows, removed_by, part = check_mps(mps + extra, lo, hi, self.notes)
+            for r in part:
+                self.partial.append({**r, "folder": os.path.basename(folder)})
             for n, p in removed.items():
+                self.sieve_smallest[n] = p
                 if p > TRIAL_LIMIT:
                     self.sieve_factors[n] = str(p)
                     if removed_by.get(n):
@@ -759,6 +857,7 @@ class Archive:
                 self.notes.add("sieve survivor missing from Candidates/*.txt (needs a PRP test)", f"{folder}: n = {n}")
             for r in mps_rows:
                 self.sieved_spans.append((r["lo"], r["hi"]))
+                self.mps_spans.append((r["lo"], r["hi"]))
                 self.dirs.append({"lo": r["lo"], "hi": r["hi"], "folder": os.path.basename(folder), "sieve": r["info"], "survivor_list": True})
             self.survivors |= survivors
         else:
@@ -878,6 +977,9 @@ def build(archive_root, out_dir, content_path):
     with open(content_path, encoding="utf-8") as f:
         site = json.load(f)
     site.pop("_about", None)
+    content_dir = os.path.dirname(os.path.abspath(content_path))
+    static_layers = read_layers(os.path.join(content_dir, "sieve_layers.json"), notes)
+    trial_left = read_trial_left(os.path.join(content_dir, "trial_left.json"), notes)
     credit = site.get("credit", "RP-12000")
     arc = Archive(archive_root, credit, notes)
     arc.confirmed = {int(n) for n in site.get("confirmed_primes", [])}
@@ -949,6 +1051,7 @@ def build(archive_root, out_dir, content_path):
         if sieved and sieve.get("depth") and surv:
             k_const = round(len(surv) / odd * math.log(sieve["depth"]), 4)
         last = max([t for t in (pm1_times[-1:] + prp_times[-1:]) if t] + ([sieve["end"]] if sieve.get("end") else []), default=None)
+        part = None if sieved else next((x for x in arc.partial if x["lo"] == lo and x["hi"] == hi), None)
         rows.append({
             "lo": lo, "hi": hi, "odd": odd, "status": status, "sieved": sieved,
             "sieve": {"depth": sieve.get("depth"), "program": program, "start": sieve.get("start"), "end": sieve.get("end"),
@@ -966,6 +1069,7 @@ def build(archive_root, out_dir, content_path):
             "resolved": resolved,
             "survivor_K": k_const,
             "done": date_part(last) if status == "done" else None,
+            **({"sieve_part": {"p": part["p"], "factored": part["factored"], "end": part["end"], "program": version_for(lo)}} if part else {}),
         })
 
     # ---- frontier: largest X with every odd n < X resolved ----
@@ -1160,7 +1264,12 @@ def build(archive_root, out_dir, content_path):
     factored = {n for n, v in arc.pm1.items() if any(r[3] for r in v)}
     composite = {n for n, v in arc.prp.items() if any(r[1] == "C" for r in v)}
     act_lo, act_hi = active.get("lo", 0), active.get("hi", 0)
-    progress = {"bucket": BUCKET, "state": "", "depth": [], "odd": [], "removed": [], "pm1": [], "comp": [], "prime": [], "open": []}
+    progress = {"bucket": BUCKET, "state": "", "depth": [], "odd": [], "removed": [], "pm1": [], "comp": [], "prime": [], "open": [],
+                "layers": [], "layer_limit": []}
+    # layers[c][k]: odd n of column c whose smallest factor p has 10^k <= p < 10^(k+1), for p below layer_limit[c]
+    # (the sieve depth; 10^7 where nothing is sieved, since any program finds factors that small by itself).
+    # Mass Prime Siever ranges count from its checked factors; the rest come from content/sieve_layers.json.
+    # Whatever a column has beyond its layers and results: n with no factor below 10^7, not sieved yet.
     for lo in range(0, N_MAX, BUCKET):
         hi = lo + BUCKET
         sieved = arc.is_sieved(lo) and arc.is_sieved(hi - 1)
@@ -1188,6 +1297,38 @@ def build(archive_root, out_dir, content_path):
         progress["removed"].append(odd - len(known) if sieved else 0)
         for k in ("pm1", "comp", "prime", "open"):
             progress[k].append(tally[k])
+        col, limit, ly = lo // BUCKET, None, []
+        if sieved and any(a <= lo and hi <= b for a, b in arc.mps_spans):
+            limit = depth_of(lo)
+            tal = collections.Counter(decade(arc.sieve_smallest[n]) for n in range(max(lo, 5) | 1, hi, 2)
+                                      if n in arc.sieve_smallest and n not in known)
+            ly = [tal[k] for k in range(max(tal) + 1)] if tal else []
+        elif col in static_layers:
+            want = depth_of(lo) if sieved else TRIAL_LIMIT
+            if static_layers[col][0] == want:
+                limit, ly = static_layers[col]
+                if not sieved and any(n in arc.sieve_smallest for n in range(max(lo, 5) | 1, hi, 2)):
+                    # a sieve that has not reached the small primes yet: its factors of the n with none below
+                    # 10^7 form layers of their own, by the power of ten of the factor found
+                    left = trial_left_n(trial_left, lo, hi) if trial_left and trial_left[2] == TRIAL_LIMIT else None
+                    if left is None:
+                        notes.add("sieve factors in a column not sieved from p <= 7, without trial_left.json data for it "
+                                  "(run tools/trial_left.py for this range)", f"n = {lo}")
+                    elif len(left) != odd - sum(ly) - len(known):
+                        notes.add("trial_left.json does not match sieve_layers.json (not used)", f"n = {lo}: {len(left)} n")
+                    else:
+                        tal = collections.Counter(decade(arc.sieve_smallest[n]) for n in left if n in arc.sieve_smallest)
+                        ly = list(ly) + [0] * max(0, max(tal, default=0) + 1 - len(ly))
+                        for k, v in tal.items():
+                            ly[k] += v
+            else:
+                notes.add("sieve_layers.json was made for another sieve depth (re-run tools/sieve_layers.c)",
+                          f"n = {lo}: {static_layers[col][0]} != {want}")
+        rest = odd - sum(ly) - len(known)
+        if (sieved and ly and rest) or rest < 0:
+            notes.add("sieve layers and results do not add up to the odd n of a column", f"n = {lo}: {rest:+d}")
+        progress["layers"].append(ly)
+        progress["layer_limit"].append(limit)
     cells = collections.Counter((n // BUCKET, q.bit_length()) for q, n, *_ in found)
     heat = []                            # [column, smallest bit length, P-1 factors with that many bits, the next, ...]
     for b in sorted({b for b, _ in cells}):
@@ -1235,7 +1376,7 @@ def build(archive_root, out_dir, content_path):
 
     def write(name, obj, pretty=False):
         path = os.path.join(out_dir, name)
-        with open(path, "w", encoding="utf-8") as f:
+        with open(path, "w", encoding="utf-8", newline="\n") as f:          # LF on Windows too
             if pretty:
                 json.dump(obj, f, ensure_ascii=False, indent=1)
             else:
@@ -1258,6 +1399,13 @@ def build(archive_root, out_dir, content_path):
         print(f"  {sieve['pm1_composite']:,} P-1 factors were products of primes found at once, split into "
               f"{sum(len(r[6]) for r in several):,} primes")
     print(f"  frontier {frontier:,} (reached {frontier_date}) · last result {summary['last_result']}")
+    if arc.uploads_archived:
+        print(f"  {len(arc.uploads_archived)} uploaded sieve file(s) are also in the range folders; each slice counted once")
+    for x in arc.partial:
+        if not any(r["lo"] == x["lo"] and r["sieved"] for r in rows):
+            spans = ", ".join(f"{a:.3g}-{b:.3g}" for a, b in x["p"])
+            print(f"  {x['lo']/1e6:.1f}M-{x['hi']/1e6:.1f}M: sieved for p in {spans} so far ({x['factored']:,} n with a factor); "
+                  "no slice from p <= 7 yet")
     for row in rows:
         if row["sieved"] and row["untested"]:
             print(f"  {row['lo']/1e6:.1f}M-{row['hi']/1e6:.1f}M: {row['untested']:,} sieve survivors still without a result")

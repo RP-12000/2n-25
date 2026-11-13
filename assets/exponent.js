@@ -9,19 +9,26 @@
     ctx = { sum: d[0], rows: d[1].rows, primes: d[2].primes.map(function (p) { return p.n; }).sort(function (a, b) { return a - b; }),
       primeInfo: {}, rankDate: d[2].rank_date, site: d[3], sieve: d[4], M: S.model(d[3]) };
     d[2].primes.forEach(function (p) { ctx.primeInfo[p.n] = p; });
-    show(fromUrl(), false);
+    start();
   }).catch(function (e) { S.fail('facts', e); });
 
   S.onLookup = function (n) { go(n); };
-  window.addEventListener('popstate', function () { if (ctx) show(fromUrl(), false); });
+  window.addEventListener('popstate', function () { if (ctx) start(); });
 
+  // without an n in the address: the first n above exponent_start_after (content/site.json) with no known factor
+  function start() {
+    var n = fromUrl();
+    if (n !== null) return show(n, false);
+    var from = Number(ctx.site.exponent_start_after) || 3600000;
+    unfactored(from, 1).then(function (m) { show(m || from + 1, false); });
+  }
   function fromUrl() {
     var q = new URLSearchParams(location.search).get('n');
     if (q === null) {
       var h = location.hash.replace(/^#(n=)?/, '');
       if (h) q = h;
     }
-    if (q === null || q === '') return ctx.sum.latest && ctx.sum.latest[0] ? ctx.sum.latest[0].n : 3600025;
+    if (q === null || q === '') return null;
     var n = S.parseN(q);
     return Number.isFinite(n) ? n : q;
   }
@@ -89,24 +96,36 @@
         }
       } else {
         info.sp = S.smallestFactor(n, TRIAL);
+        // a sieve slice above the small primes (the sieve from p = 2 still running) may have found a factor already
+        info.sf = shard && shard.sf && shard.sf[n] ? shard.sf[n] : null;
         var act = ctx.site.active || {};
-        info.kind = info.sp ? 'future' : (n >= act.lo && n < act.hi ? 'queued' : 'todo');
+        info.kind = info.sp ? 'future' : info.sf ? 'sieve-part' : (n >= act.lo && n < act.hi ? 'queued' : 'todo');
       }
       paint(my, n, info);
       if (scroll) window.scrollTo(0, 0);
     });
   }
 
+  /* "p from 10¹³ to 2.4×10¹³": the p ranges a row not sieved from p = 2 yet has been sieved for */
+  function partText(row) {
+    var sp = row && row.sieve_part;
+    if (!sp || !sp.p || !sp.p.length) return 'part of the p range';
+    return 'p from ' + sp.p.map(function (x) { return S.depth(x[0]) + ' to ' + S.depth(x[1]); }).join(' and ');
+  }
+
   /* ---------- painting ---------- */
   function paint(my, n, info) {
     if (my !== token) return;
     var kind = info.kind, valid = typeof n === 'number' && Number.isFinite(n) && Math.floor(n) === n;
+    var none = ['even', 'neg', 'out', 'bad'].indexOf(kind) >= 0;
+    document.getElementById('exp-main').hidden = none;
+    document.getElementById('exp-none').hidden = !none;
+    if (none) return paintNone(n, kind);
     var row = valid && n < 1e7 && n >= 0 ? rowOf(n) : null;
     var rangeLabel = row ? S.rangeLabel(row.lo, row.hi) : '—';
     var site = ctx.site, M = ctx.M;
     document.title = (valid ? 'n = ' + fmt(n) : 'Exponent') + ' · 2ⁿ−25 Prime Search';
-    document.getElementById('crumb-range').textContent = rangeLabel;
-    document.getElementById('crumb-n').textContent = 'n = ' + (valid ? fmt(n) : String(n));
+    crumbs(rangeLabel, 'n = ' + (valid ? fmt(n) : String(n)));
     var hdr = document.getElementById('hdr-n');
     if (hdr && document.activeElement !== hdr) hdr.value = valid ? String(n) : '';
 
@@ -131,6 +150,7 @@
       sieve: ['Has a known factor.', 'The sieve struck it out' + (row && row.sieve && row.sieve.end ? ' on ' + S.day(row.sieve.end) : '') + ', before any P-1 or PRP work.', 'good'],
       'sieve-big': ['Has a known factor.', 'The sieve to ' + S.depth(depth) + ' struck it out; its factor lies between 10⁷ and ' + S.depth(depth) + ' and is not stored.', 'good'],
       future: ['Has a small factor.', 'Trial division on this page finds it; the first sieve pass will remove this n.', 'good'],
+      'sieve-part': ['Has a known factor.', 'The sieve found it while sieving ' + partText(row) + '. The sieve of the smaller p is still running.', 'good'],
       prime: ['Is a probable prime!', 'Prime ' + (pIdx + 1) + ' of the ' + ctx.primes.length + ' known, in order of n.' + (pInfo.rank ? ' Top PRP ' + pInfo.rank + ' in the list of ' + ctx.rankDate + '.' : ''), 'prime'],
       reported: ['Reported as a probable prime.', 'A PRP-3 test sent to the project says 2ⁿ − 25 is a probable prime. The project re-tests it before counting it as a known prime.', 'prime'],
       untested: ['Waiting for a PRP test.', 'It survived the sieve to ' + S.depth(depth) + (info.pm1 && info.pm1.length ? ' and P-1' : '') + '. A PRP test will decide it.', 'accent'],
@@ -156,6 +176,43 @@
     paintHistory(n, info, row, pInfo, tiny);
     paintProps(n, valid, row, rangeLabel);
     paintStrip(n, info, row);
+  }
+
+  /* Ranges / <range> / n = …; an n outside the search has no range, so that crumb is left out */
+  function crumbs(range, last) {
+    var r = document.getElementById('crumb-range'), sep = document.getElementById('crumb-sep');
+    r.textContent = range || '';
+    r.hidden = sep.hidden = !range;
+    document.getElementById('crumb-n').textContent = last;
+  }
+
+  /* An n outside the search (even, below 5, 10^7 or more, or not a whole number): say so, and link the nearest odd n. */
+  function paintNone(n, kind) {
+    var num = typeof n === 'number' && Number.isFinite(n);
+    var label = num ? 'n = ' + (Math.abs(n) < 1e15 ? fmt(n) : String(n)) : '“' + esc(String(n).slice(0, 40)) + '”';
+    document.title = (num ? label : 'Exponent') + ' does not exist · 2ⁿ−25 Prime Search';
+    crumbs(null, num ? label : String(n).slice(0, 40));
+    var hdr = document.getElementById('hdr-n');
+    if (hdr && document.activeElement !== hdr) hdr.value = num ? String(n) : '';
+    var near = [];
+    if (kind === 'even') {
+      if (n - 1 >= 5) near.push(n - 1);
+      if (n + 1 < 1e7) near.push(n + 1);
+    } else if (num) {
+      var below = 2 * Math.floor((n - 1) / 2) + 1, best = n - below <= below + 2 - n ? below : below + 2;
+      near.push(Math.min(9999999, Math.max(5, best)));
+    }
+    document.getElementById('none-title').innerHTML = label + ' does not exist';
+    document.getElementById('none-why').innerHTML = {
+      even: 'The search covers odd n only. For even n, 2<sup>n</sup> − 25 = (2<sup>n/2</sup> − 5)(2<sup>n/2</sup> + 5), so it is never prime.',
+      neg: '2<sup>n</sup> − 25 is negative for n below 5, so the search starts at n = 5.',
+      out: 'The search and its database cover n below 10,000,000.',
+      bad: 'Enter a whole number from 5 to 9,999,999.'
+    }[kind] + (near.length ? ' The nearest odd n ' + (near.length > 1 ? 'are' : 'is') + ':' : '');
+    document.getElementById('none-near').innerHTML = near.map(function (m) {
+      return navButton(m, near.length > 1 ? (m < n ? 'Odd n below' : 'Odd n above') : 'Nearest odd n',
+        m < n ? '← ' + fmt(m) : fmt(m) + ' →', 'n = ' + fmt(m));
+    }).join('');
   }
 
   /* ---------- previous / next: odd n, unfactored n, known prime ---------- */
@@ -213,9 +270,17 @@
             return walk();
           });
         }
-        if (++tries > 2000) return Promise.resolve(null);
-        if (!ctx.primeInfo[m] && !S.smallestFactor(m, TRIAL)) return Promise.resolve(m);
-        m += 2 * dir;
+        // not sieved from the small primes yet: trial division here, and the factors of any sieve slice
+        var blockLo = Math.floor(m / 100000) * 100000;
+        return S.shard(m, ctx.sum.shards).then(function (shard) {
+          var sf = shard && shard.sf;
+          while (m >= Math.max(5, blockLo) && m < Math.min(1e7, blockLo + 100000)) {
+            if (++tries > 2000) return null;
+            if (!ctx.primeInfo[m] && !(sf && sf[m]) && !S.smallestFactor(m, TRIAL)) return m;
+            m += 2 * dir;
+          }
+          return walk();
+        });
       }
       return Promise.resolve(null);
     }
@@ -260,10 +325,16 @@
       line = 'Removed by the sieve' + (row.sieve.end ? ' ' + S.day(row.sieve.end) : '') + (row.sieve.program ? ' · ' + esc(S.prog(row.sieve.program)) : '');
       tests = notNeeded;
       banner = ['', kind === 'sieve' ? '1 known factor · cofactor not tested' : 'Factor between 10⁷ and ' + S.depth(depth) + ' · not stored'];
+    } else if (kind === 'sieve-part') {
+      band = ['good', 'factored · 0 primality tests remaining'];
+      var sp = row.sieve_part || {};
+      line = 'Removed by the sieve' + (sp.end ? ' ' + S.day(sp.end) : '') + ' · ' + partText(row);
+      tests = notNeeded;
+      banner = ['', '1 known factor · cofactor not tested'];
     } else if (kind === 'future') {
       band = ['accent', 'will be removed by the sieve · no test needed'];
       var act = site.active || {};
-      line = n >= act.lo && n < act.hi ? 'Queued: ' + S.supHTML(esc(stage0.title)) + (stage0.where ? ' · ' + esc(stage0.where) : '') : 'Not assigned yet; the first sieve pass will remove it';
+      line = n >= act.lo && n < act.hi ? 'Queued: ' + S.supHTML(esc(stage0.title)) + (stage0.where ? ' · ' + S.supHTML(esc(stage0.where)) : '') : 'Not assigned yet; the first sieve pass will remove it';
       lineCls = 'accent';
       tests = notNeeded;
       banner = ['', '1 known factor · cofactor not tested'];
@@ -302,7 +373,7 @@
       banner = ['', 'Survived the sieve · ' + chance(depth || TRIAL)];
     } else if (kind === 'queued' || kind === 'todo') {
       band = [kind === 'queued' ? 'accent' : '', '1 PRP test remaining unless the sieve finds a factor'];
-      line = kind === 'queued' ? 'Queued: ' + S.supHTML(esc(stage0.title)) + (stage0.where ? ' · ' + esc(stage0.where) : '') : 'Not assigned yet';
+      line = kind === 'queued' ? 'Queued: ' + S.supHTML(esc(stage0.title)) + (stage0.where ? ' · ' + S.supHTML(esc(stage0.where)) : '') : 'Not assigned yet';
       lineCls = kind === 'queued' ? 'accent' : '';
       tests = [['PRP-3', '—', state('Not tested', 'accent')], ['Proof', '—', '—']];
       banner = ['', 'No factor below 10⁷ · ' + chance(TRIAL)];
@@ -330,7 +401,7 @@
 
   function paintEffort(n, info, row) {
     var kind = info.kind, card = document.getElementById('fx-card');
-    var show = row && ['comp', 'p1', 'sieve', 'sieve-big', 'untested', 'future', 'queued', 'todo'].indexOf(kind) >= 0 && n > 13;
+    var show = row && ['comp', 'p1', 'sieve', 'sieve-big', 'sieve-part', 'untested', 'future', 'queued', 'todo'].indexOf(kind) >= 0 && n > 13;
     card.hidden = !show;
     if (!show) return;
     var target = ctx.site.sieve_target || 1e14;
@@ -363,15 +434,29 @@
         ' of ' + fmt(odd) + (ranP1 ? ', then P-1 removed ' + fmt(row.pm1.factors) + ' of those ' + fmt(row.pm1.runs) : '') +
         '. Target is today’s plan for new ranges: sieve to ' + S.depth(target) + ' and skip P-1, which stopped paying off once the sieve went deep.';
     } else {
-      var tb = Math.log2(target);
-      rows.push('<tr><th class="text" scope="row">Actual</th>' + cell('—') + cell('0.00 %') + cell('—') + cell('—') + cell('—') + cell('0.00 %') + '</tr>');
-      rows.push('<tr class="alt"><th class="text" scope="row">Target</th>' + cell(S.depth(target)) + cell(pct(sTgt)) + cell('—') + cell('—') + cell('—') + cell(pct(sTgt)) + '</tr>');
-      rows.push('<tr><th class="text" scope="row">Difference</th>' + sign(-1, tb.toFixed(1) + ' bits') + sign(-1, pct(sTgt)) + cell('—') + cell('—') + cell('—') + sign(-1, pct(sTgt)) + '</tr>');
+      var tb = Math.log2(target), sp = row.sieve_part;
       var act = ctx.site.active || {};
       scope = n >= act.lo && n < act.hi ? (ctx.site.stages || []).slice(0, 3).map(function (s) { return s.title.replace(/\^(\d+)/g, function (m, e) { return S.sup(e); }); }).join(', then ') : 'not started';
-      var odd7 = 700000;
-      note = '* Expected share of odd n removed, from the survivor model (survivors fall like ' + ctx.M.K + ' / ln p). For 700,000 odd n that leaves about ' +
-        fmt(Math.round(ctx.M.survivors(odd7, 1e12) / 100) * 100) + ' at 10¹² and ' + fmt(Math.round(ctx.M.survivors(odd7, target) / 100) * 100) + ' at ' + S.depth(target) + '.';
+      if (sp && sp.p && sp.p.length && row.odd) {
+        // sieved for part of the p range only: the share of odd n it found a factor for, and what the model expects for those p
+        var share = sp.factored / row.odd;
+        var expect = 1 - sp.p.reduce(function (k, x) { return k * Math.log(x[0]) / Math.log(x[1]); }, 1);
+        var span = sp.p.map(function (x) { return S.depth(x[0]) + ' – ' + S.depth(x[1]); }).join(', ');
+        rows.push('<tr><th class="text" scope="row">Actual</th>' + cell(span) + cell(pct(share)) + cell('—') + cell('—') + cell('—') + cell(pct(share)) + '</tr>');
+        rows.push('<tr class="alt"><th class="text" scope="row">Target</th>' + cell(S.depth(target)) + cell(pct(sTgt)) + cell('—') + cell('—') + cell('—') + cell(pct(sTgt)) + '</tr>');
+        rows.push('<tr><th class="text" scope="row">Difference</th>' + cell('—') + sign(share - sTgt, pct(Math.abs(share - sTgt))) + cell('—') + cell('—') + cell('—') +
+          sign(share - sTgt, pct(Math.abs(share - sTgt))) + '</tr>');
+        note = '* Share of odd n in ' + S.rangeLabel(row.lo, row.hi) + ' removed by that much work. So far the sieve has covered ' + partText(row).replace(/<[^>]+>/g, '') +
+          ' only, and found a factor for ' + fmt(sp.factored) + ' of the ' + fmt(row.odd) + ' odd n (the survivor model expects ' + pct(expect) +
+          '). The sieve of the smaller p is still running. Target is today’s plan for new ranges: sieve to ' + S.depth(target) + ' and skip P-1.';
+      } else {
+        rows.push('<tr><th class="text" scope="row">Actual</th>' + cell('—') + cell('0.00 %') + cell('—') + cell('—') + cell('—') + cell('0.00 %') + '</tr>');
+        rows.push('<tr class="alt"><th class="text" scope="row">Target</th>' + cell(S.depth(target)) + cell(pct(sTgt)) + cell('—') + cell('—') + cell('—') + cell(pct(sTgt)) + '</tr>');
+        rows.push('<tr><th class="text" scope="row">Difference</th>' + sign(-1, tb.toFixed(1) + ' bits') + sign(-1, pct(sTgt)) + cell('—') + cell('—') + cell('—') + sign(-1, pct(sTgt)) + '</tr>');
+        var odd7 = 700000;
+        note = '* Expected share of odd n removed, from the survivor model (survivors fall like ' + ctx.M.K + ' / ln p). For 700,000 odd n that leaves about ' +
+          fmt(Math.round(ctx.M.survivors(odd7, 1e12) / 100) * 100) + ' at 10¹² and ' + fmt(Math.round(ctx.M.survivors(odd7, target) / 100) * 100) + ' at ' + S.depth(target) + '.';
+      }
     }
     document.getElementById('fx-scope').textContent = scope;
     document.getElementById('fx').innerHTML = '<table class="data"><thead><tr><th rowspan="2"></th><th class="group" colspan="2">Sieve</th><th class="group" colspan="3">P-1 factoring</th><th class="group">Combined</th></tr>' +
@@ -444,11 +529,20 @@
         out.push(factorRow(n, F, day, how, who, bound));
         sum = '1 factor · ' + bitsOf(F).toFixed(1) + ' of ' + fmt(n) + ' bits known';
       }
-    } else if ((kind === 'sieve' || kind === 'future') && info.sp) {
-      var sfu = info.shard && info.shard.sfu, finder = sfu && sfu[n] !== undefined && info.shard.users[sfu[n]];
-      out.push(factorRow(n, String(info.sp), kind === 'sieve' && row.sieve && row.sieve.end ? S.day(row.sieve.end) : '—', kind === 'sieve' ? (finder ? 'Sieve, uploaded' : 'Sieve') : 'Trial division (this page)',
-        kind === 'sieve' ? finder || (info.sp >= 1e7 ? ctx.site.credit : '—') : '—', 4000));
-      sum = '1 factor · ' + Math.log2(info.sp).toFixed(1) + ' of ' + fmt(n) + ' bits known';
+    } else if ((kind === 'sieve' || kind === 'future' || kind === 'sieve-part') && (info.sp || info.sf)) {
+      var sfu = info.shard && info.shard.sfu, finder = sfu && sfu[n] !== undefined && info.shard.users[sfu[n]], known = 0;
+      if (info.sp) {
+        out.push(factorRow(n, String(info.sp), kind === 'sieve' && row.sieve && row.sieve.end ? S.day(row.sieve.end) : '—', kind === 'sieve' ? (finder ? 'Sieve, uploaded' : 'Sieve') : 'Trial division (this page)',
+          kind === 'sieve' ? finder || (info.sp >= 1e7 ? ctx.site.credit : '—') : '—', 4000));
+        known += Math.log2(info.sp);
+      }
+      if (info.sf && String(info.sf) !== String(info.sp)) {
+        // found by a sieve slice above the small primes, before the sieve from p = 2 reached this n
+        var part = row.sieve_part || {};
+        out.push(factorRow(n, String(info.sf), part.end ? S.day(part.end) : '—', finder ? 'Sieve, uploaded' : 'Sieve', finder || ctx.site.credit, 4000));
+        known += bitsOf(String(info.sf));
+      }
+      sum = out.length + (out.length === 1 ? ' factor · ' : ' factors · ') + known.toFixed(1) + ' of ' + fmt(n) + ' bits known';
     } else if (kind === 'even') {
       sum = 'algebraic';
       text = '2^' + fmt(n) + ' − 25 = (2^' + fmt(n / 2) + ' − 5) × (2^' + fmt(n / 2) + ' + 5), and 3 divides the first factor.';
@@ -485,6 +579,10 @@
     if (row && row.sieved && !tiny && kind !== 'even') {
       H.push([row.sieve.end ? S.day(row.sieve.end) : '—', 'Sieve', esc(S.prog(row.sieve.program)) || '—', 'every p &lt; ' + S.depth(row.sieve.depth),
         kind === 'sieve' ? 'factor ' + fmt(info.sp) : kind === 'sieve-big' ? 'factor &gt; 10⁷' : 'no factor']);
+    }
+    if (row && !row.sieved && row.sieve_part && kind !== 'even') {
+      H.push([row.sieve_part.end ? S.day(row.sieve_part.end) : '—', 'Sieve', esc(S.prog(row.sieve_part.program || '')) || '—', partText(row),
+        info.sf ? 'factor ' + fmt(info.sf) : 'no factor']);
     }
     (info.pm1 || []).forEach(function (r) {
       var who = user(info.shard, r, 5);
@@ -557,6 +655,7 @@
           if (p === 2 || p === 5) continue;
           if (S.powmod(2, m, p) === 25 % p) { code = 'S'; break; }
         }
+        if (code === 'U' && info.shard && info.shard.sf && info.shard.sf[m]) code = 'S';
       }
       counts[code] = (counts[code] || 0) + 1;
       var label = 'n = ' + fmt(m) + ': ' + names[code];

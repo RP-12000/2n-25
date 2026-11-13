@@ -35,9 +35,16 @@
 </header>
 <main class="page" id="main">
   <div class="crumbs">
-    <nav aria-label="Breadcrumb"><a href="ranges.html">Ranges</a><span aria-hidden="true">/</span><span id="crumb-range">—</span><span aria-hidden="true">/</span><span id="crumb-n">n</span></nav>
+    <nav aria-label="Breadcrumb"><a href="ranges.html">Ranges</a><span aria-hidden="true">/</span><span id="crumb-range">—</span><span aria-hidden="true" id="crumb-sep">/</span><span id="crumb-n">n</span></nav>
   </div>
 
+  <section class="card none-card" id="exp-none" hidden aria-labelledby="none-title">
+    <h1 id="none-title">Does not exist</h1>
+    <p class="verdict-sub" id="none-why"></p>
+    <div class="navs" role="group" aria-label="Nearest odd n in the search" id="none-near"></div>
+  </section>
+
+  <div id="exp-main">
   <section class="exp-grid">
     <article class="card identity" aria-labelledby="exp-title">
       <h1 id="exp-title">2<sup>n</sup> − 25</h1>
@@ -77,6 +84,7 @@
     <div class="strip-ends" id="strip-ends"></div>
     <div class="legend" id="strip-legend"></div>
   </section>
+  </div>
 </main>
 <footer class="site-footer">
   <div class="bar">

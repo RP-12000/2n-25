@@ -1,4 +1,5 @@
-/* History page: records, the full frontier and daily work charts, month-by-month table, milestones and the timeline. */
+/* History page: records, the full frontier and daily work charts, the sieve depth and P-1 factor sizes,
+   month-by-month table, milestones and the timeline. */
 (function () {
   'use strict';
   var S = window.Site, fmt = S.fmt, esc = S.esc;
@@ -6,6 +7,7 @@
 
   S.all(['summary', 'primes', 'site']).then(function (d) {
     render(d[0], d[1], d[2]);
+    S.load('progress').then(function (p) { sieveChart(p, d[0]); }).catch(function (e) { S.fail('pm1-chart', e); });
   }).catch(function (e) { S.fail('hist-tiles', e); });
 
   function el(id) { return document.getElementById(id); }
@@ -157,5 +159,138 @@
       var when = /^\d{4}-\d{2}(-\d{2})?$/.test(t[0]) ? '<time datetime="' + esc(t[0]) + '">' + esc(t[0]) + '</time>' : '<span class="when">' + esc(t[0]) + '</span>';
       return '<li>' + when + '<span>' + S.supHTML(esc(t[1])) + '</span></li>';
     }).join('');
+  }
+  /* ---------- the sieve depth and the P-1 factors by size, column by column ----------
+     viewBox 1160 × 476: one panel (factor size p, log scale) over the n the search has covered, n axis */
+  var H = { w: 1160, h: 476, L: 64, R: 1136, T: 30, B: 430 };
+  var LOG2 = Math.log10(2);
+  var HEAT = [1, 2, 4, 8, 16];             // lower bounds of the five colour classes, P-1 factors per cell
+
+  function heatClass(c) { for (var k = HEAT.length - 1; k > 0; k--) if (c >= HEAT[k]) return k; return 0; }
+  function heatLabel(k) { return k === HEAT.length - 1 ? HEAT[k] + '+' : HEAT[k + 1] - HEAT[k] === 1 ? String(HEAT[k]) : HEAT[k] + '–' + (HEAT[k + 1] - 1); }
+  function sci(x) {
+    var e = Math.floor(Math.log10(x) + 1e-9), m = x / Math.pow(10, e);
+    var ms = m.toFixed(1);
+    if (ms === '10.0') { e += 1; ms = '1.0'; }
+    return (ms === '1.0' ? '' : ms + '×') + '10' + S.sup(e);
+  }
+
+  function sieveChart(p, sum) {
+    var r1 = S.r1, B = p.bucket, i, k, n, dec;
+    var host = el('pm1-chart');
+    var last = -1;
+    for (i = 0; i < p.state.length; i++) if (p.depth[i]) last = i;
+    p.heat.forEach(function (h) { if (h[0] > last) last = h[0]; });
+    if (last < 0) { host.innerHTML = '<p class="small">Nothing sieved yet.</p>'; return; }
+    var step = 200000, nmax = Math.ceil((last + 1) * B / step) * step, cols = Math.min(p.state.length, Math.round(nmax / B));
+    var hTop = p.heat.length ? Math.max.apply(null, p.heat.map(function (h) { return h[1] + h.length - 3; })) : 0;
+    var depths = p.depth.filter(Boolean);
+    var dTop = depths.length ? Math.log10(Math.max.apply(null, depths)) : 0;
+    var DEC = Math.max(12, Math.ceil(Math.max(hTop * LOG2, dTop) / 3) * 3);
+    var X = function (x) { return H.L + x / nmax * (H.R - H.L); };
+    var colX = function (c) { return X(c * B); };
+    var Y = function (d) { return H.B - d / DEC * (H.B - H.T); };
+    var heatCols = p.heat.map(function (h) { return h[0]; });
+    var pm1Lo = heatCols.length ? Math.min.apply(null, heatCols) * B : 0, pm1Hi = heatCols.length ? (Math.max.apply(null, heatCols) + 1) * B : 0;
+    var removed = 0;
+    for (i = 0; i < cols; i++) if (p.depth[i]) removed += p.removed[i];
+    var days = sum.daily_pm1 || [];
+
+    el('hist-sieve-lede').innerHTML = 'Grey: the sieve, which found every factor below its edge; each siever version went a little deeper. ' +
+      (heatCols.length ? 'Violet: the ' + fmt(p.heat_factors) + ' prime factors P-1 found above the sieve for ' + S.M(pm1Lo) + ' ≤ n &lt; ' + S.M(pm1Hi) +
+        (days.length ? ', ' + esc(days[0][0]) + ' to ' + esc(days[days.length - 1][0]) : '') + ', by size. ' : '') +
+      'The search now sieves deeper instead of running P-1; see the <a href="index.html">Status</a> page for the sieve in progress.';
+
+    var aria = 'Factor size p, log scale, for every odd n below ' + S.M(nmax) + ' in columns of ' + fmt(B) + '. The sieve found every factor below ' +
+      S.depth(Math.min.apply(null, depths)) + ' to ' + S.depth(Math.max.apply(null, depths)) + ', depending on the range, and removed ' + fmt(removed) + ' n. ' +
+      (heatCols.length ? 'P-1 found ' + fmt(p.heat_factors) + ' larger prime factors for n from ' + S.M(pm1Lo) + ' to ' + S.M(pm1Hi) + ', up to ' + sci(Math.pow(2, hTop)) + '.' : '');
+    var o = ['<svg class="chart big" viewBox="0 0 ' + H.w + ' ' + H.h + '" tabindex="0" role="img" aria-label="' + esc(aria) + '">'];
+
+    // grid
+    var g = [];
+    for (n = step; n < nmax; n += step) g.push('<line x1="' + r1(X(n)) + '" y1="' + H.T + '" x2="' + r1(X(n)) + '" y2="' + H.B + '"></line>');
+    for (dec = 3; dec <= DEC; dec += 3) g.push('<line x1="' + H.L + '" y1="' + r1(Y(dec)) + '" x2="' + H.R + '" y2="' + r1(Y(dec)) + '"></line>');
+    o.push('<g class="grid">' + g.join('') + '</g>');
+
+    // the sieve: every factor below the edge is known
+    var fill = '', edge = '', lastEnd = null;
+    i = 0;
+    while (i < cols) {
+      if (!p.depth[i]) { i++; lastEnd = null; continue; }
+      var j = i;
+      while (j + 1 < cols && p.depth[j + 1] === p.depth[i]) j++;
+      var xa = r1(colX(i)), xb = r1(colX(j + 1)), y = r1(Y(Math.log10(p.depth[i])));
+      fill += 'M' + xa + ' ' + H.B + 'V' + y + 'H' + xb + 'V' + H.B + 'Z';
+      edge += (lastEnd === xa ? 'V' + y : 'M' + xa + ' ' + y) + 'H' + xb;
+      lastEnd = xb;
+      i = j + 1;
+    }
+    o.push('<path class="sieved crisp" d="' + fill + '"></path><path class="depth-edge" d="' + edge + '"></path>');
+
+    // P-1 factors by size: one cell is a column of n times one bit of p
+    var heat = HEAT.map(function () { return ''; });
+    p.heat.forEach(function (h) {
+      if (h[0] >= cols) return;
+      var x0 = r1(colX(h[0])), x1 = r1(colX(h[0] + 1));
+      for (var c = 2; c < h.length; c++) {
+        if (!h[c]) continue;
+        var bits = h[1] + c - 2;
+        heat[heatClass(h[c])] += 'M' + x0 + ' ' + r1(Y(bits * LOG2)) + 'H' + x1 + 'V' + r1(Y((bits - 1) * LOG2)) + 'H' + x0 + 'Z';
+      }
+    });
+    o.push('<g class="crisp">' + heat.map(function (d, c) { return d ? '<path class="heat-' + c + '" d="' + d + '"></path>' : ''; }).join('') + '</g>');
+
+    // axes
+    var ax = ['<line class="axis" x1="' + H.L + '" y1="' + H.B + '" x2="' + H.R + '" y2="' + H.B + '"></line>'];
+    for (dec = 3; dec <= DEC; dec += 3) ax.push('<text class="end" x="' + (H.L - 8) + '" y="' + r1(Y(dec) + 4) + '">10' + S.sup(dec) + '</text>');
+    for (n = 0; n <= nmax; n += step) {
+      var tx = r1(X(n));
+      ax.push('<line class="ticks" x1="' + tx + '" y1="' + H.B + '" x2="' + tx + '" y2="' + (H.B + 5) + '"></line>');
+      ax.push('<text class="mid" x="' + tx + '" y="' + (H.B + 18) + '">' + (n ? S.M(n) : '0') + '</text>');
+    }
+    var midY = (H.T + H.B) / 2;
+    ax.push('<text class="axis-title mid" transform="rotate(-90 14 ' + midY + ')" x="14" y="' + midY + '">FACTOR SIZE p</text>');
+    o.push(ax.join(''));
+
+    // labels in the plot
+    o.push('<text class="strong sans" x="' + (H.L + 10) + '" y="' + r1(Y(3.4)) + '">Sieve: every factor below the edge is known</text>');
+    o.push('<text x="' + (H.L + 10) + '" y="' + r1(Y(3.4) + 15) + '">' + fmt(removed) + ' n removed · p up to ' + S.depth(Math.max.apply(null, depths)) + '</text>');
+    if (heatCols.length) {
+      o.push('<text class="strong sans mid" x="' + r1((X(pm1Lo) + X(pm1Hi)) / 2) + '" y="' + r1(Y(hTop * LOG2) - 10) + '">P-1: ' + fmt(p.heat_factors) + ' prime factors</text>');
+    }
+    o.push('<line class="xhair" x1="0" y1="' + H.T + '" x2="0" y2="' + H.B + '" visibility="hidden"></line>');
+    o.push('</svg>');
+    host.innerHTML = o.join('');
+
+    el('pm1-legend').innerHTML = '<span><i class="key sieved" aria-hidden="true"></i>Sieved: every factor below the edge is known</span>' +
+      '<span class="swatches">P-1 factors per cell' + HEAT.map(function (lo, c) {
+        return ' <i class="key heat-' + c + '" aria-hidden="true"></i>' + heatLabel(c);
+      }).join('') + '</span>' +
+      '<span class="muted">one cell: ' + fmt(B) + ' n × 1 bit of p · hover or tap a column for its numbers</span>';
+
+    var heatBy = {};
+    p.heat.forEach(function (h) { heatBy[h[0]] = h; });
+    S.columnHover(host.querySelector('svg'), {
+      wrap: el('pm1-wrap'), tip: el('pm1-tip'), w: H.w, h: H.h, L: H.L, R: H.R, cols: cols, colX: colX, start: heatCols.length ? heatCols[0] : 0,
+      fill: function (col, sy) {
+        var lo = col * B, t = S.tipTable(el('pm1-tip'), fmt(lo) + ' ≤ n < ' + fmt(lo + B));
+        t.add(fmt(p.odd[col]), 'odd n');
+        if (p.depth[col]) {
+          t.add(fmt(p.removed[col]), 'removed by the sieve, p < ' + S.depth(p.depth[col]), 'sieved');
+          t.add(fmt(p.odd[col] - p.removed[col]), 'left after the sieve');
+        } else t.note('Not sieved yet.');
+        var hrow = heatBy[col];
+        if (!hrow) return;
+        var tot = 0, k0 = hrow[1], k1 = k0 + hrow.length - 3;
+        for (var c = 2; c < hrow.length; c++) tot += hrow[c];
+        t.add(fmt(tot), 'P-1 prime factors, ' + k0 + '–' + k1 + ' bits', 'heat-2');
+        if (p.pm1[col]) t.add(fmt(p.pm1[col]), 'n factored by P-1', 'st-pm1');
+        if (sy !== null && sy >= H.T && sy <= H.B) {
+          var bits = Math.floor((H.B - sy) / (H.B - H.T) * DEC / LOG2) + 1;
+          var cnt = bits >= k0 && bits <= k1 ? hrow[bits - k0 + 2] : 0;
+          if (bits >= k0 && bits <= k1) t.note((cnt ? fmt(cnt) + (cnt === 1 ? ' factor' : ' factors') : 'No factor') + ' of ' + bits + ' bits here (p ≈ ' + sci(Math.pow(2, bits - 1)) + ' – ' + sci(Math.pow(2, bits)) + ')', 'tip-cell');
+        }
+      }
+    });
   }
 })();
