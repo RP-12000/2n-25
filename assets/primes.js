@@ -71,70 +71,69 @@
     return best;
   }
 
+  /* The k-th known prime against its n on a log scale: the heuristic says the k-th prime sits near
+     n = e^((k - b) / C), a straight line here. Vertical runs of the step are stretches searched without a prime. */
   function countChart(P, frontier, M) {
-    var L = 60, R = 1140, B = 250, T = 20, x0 = 0.5, x1 = 7;
-    var X = function (n) { return L + (Math.log10(n) - x0) / (x1 - x0) * (R - L); };
-    var expect = function (n) { return M.C * Math.log(n) + M.intercept; };
+    var W = 600, H = 430, L = 56, R = W - 14, T = 14, B = H - 58, y0 = 0.5, y1 = 7;
     var N = P.length;
+    var countAt = function (n) { return M.C * Math.log(n) + M.intercept; };   // primes expected up to n
+    var nAt = function (k) { return Math.exp((k - M.intercept) / M.C); };     // where the k-th one is expected
     var projEnd = N + M.expected(frontier, 1e7);
-    var top = Math.max(10, Math.ceil(Math.max(projEnd, expect(1e7)) / 10) * 10);
-    var Y = function (v) { return B - v / top * (B - T); };
-    var o = ['<svg class="chart" viewBox="0 0 1160 292" role="img" aria-label="Number of known primes against n on a log scale: ' + N +
-      ' primes up to n = ' + fmt(P[N - 1].n) + ', close to the expected curve; the search reached n = ' + fmt(frontier) + ' and about ' +
+    var top = Math.max(10, Math.ceil(Math.max(projEnd, countAt(1e7)) / 10) * 10);
+    var X = function (k) { return L + k / top * (R - L); };
+    var Y = function (n) { return B - (Math.log10(n) - y0) / (y1 - y0) * (B - T); };
+    var o = ['<svg class="chart small" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="The n of each known prime in order, on a log scale: ' + N +
+      ' primes up to n = ' + fmt(P[N - 1].n) + ', close to the expected line; the search reached n = ' + fmt(frontier) + ' and about ' +
       M.expected(frontier, 1e7).toFixed(1) + ' more primes are expected below 10 million.">'];
-    var xf = X(frontier);
-    o.push('<rect class="band" x="' + S.r1(xf) + '" y="' + T + '" width="' + S.r1(R - xf) + '" height="' + (B - T) + '"></rect>');
+    var yf = Y(frontier);
+    o.push('<rect class="band" x="' + L + '" y="' + T + '" width="' + (R - L) + '" height="' + S.r1(Math.max(0, yf - T)) + '"></rect>');
     var g = [], yl = [];
-    for (var v = 0; v <= top; v += 10) {
-      if (v) g.push('<line x1="' + L + '" y1="' + S.r1(Y(v)) + '" x2="' + R + '" y2="' + S.r1(Y(v)) + '"></line>');
-      yl.push('<text class="end" x="' + (L - 8) + '" y="' + S.r1(Y(v) + 3) + '">' + v + '</text>');
+    for (var e = 1; e <= y1; e++) {
+      g.push('<line x1="' + L + '" y1="' + S.r1(Y(Math.pow(10, e))) + '" x2="' + R + '" y2="' + S.r1(Y(Math.pow(10, e))) + '"></line>');
+      yl.push('<text class="end" x="' + (L - 8) + '" y="' + S.r1(Y(Math.pow(10, e)) + 3) + '">' + S.tenTo(e) + '</text>');
     }
     o.push('<g class="grid">' + g.join('') + '</g><line class="axis" x1="' + L + '" y1="' + B + '" x2="' + R + '" y2="' + B + '"></line>' + yl.join(''));
     var tk = [], xl = [];
-    for (var e = 1; e <= x1; e++) {
-      tk.push('<line x1="' + S.r1(X(Math.pow(10, e))) + '" y1="' + B + '" x2="' + S.r1(X(Math.pow(10, e))) + '" y2="' + (B + 4) + '"></line>');
-      xl.push('<text class="mid" x="' + S.r1(X(Math.pow(10, e))) + '" y="' + (B + 20) + '">' + S.tenTo(e) + '</text>');
+    for (var k = 0; k <= top; k += 5) {
+      tk.push('<line x1="' + S.r1(X(k)) + '" y1="' + B + '" x2="' + S.r1(X(k)) + '" y2="' + (B + 4) + '"></line>');
+      xl.push('<text class="mid" x="' + S.r1(X(k)) + '" y="' + (B + 20) + '">' + k + '</text>');
     }
     o.push('<g class="ticks">' + tk.join('') + '</g>' + xl.join(''));
-    o.push('<line class="guide muted" x1="' + S.r1(xf) + '" y1="' + T + '" x2="' + S.r1(xf) + '" y2="' + B + '"></line>');
-    o.push('<text class="end" x="' + S.r1(xf - 6) + '" y="' + (B - 7) + '">searched to ' + S.M(frontier) + '</text>');
-    if (R - xf > 50) o.push('<text class="mid" x="' + S.r1((xf + R) / 2) + '" y="' + (B - 14) + '">to 10⁷</text>');
+    o.push('<line class="guide muted" x1="' + L + '" y1="' + S.r1(yf) + '" x2="' + R + '" y2="' + S.r1(yf) + '"></line>');
+    o.push('<text x="' + (L + 6) + '" y="' + S.r1(yf + 14) + '">searched to ' + S.M(frontier) + '</text>');
+    if (yf - T >= 14) o.push('<text x="' + (L + 6) + '" y="' + S.r1(yf - 4) + '">to 10⁷</text>');
 
-    // expected curve
-    var n0 = Math.max(Math.pow(10, x0), Math.exp(-M.intercept / M.C)), pts = [];
-    for (var i = 0; i <= 90; i++) {
-      var n = Math.exp(Math.log(n0) + (Math.log(1e7) - Math.log(n0)) * i / 90);
-      pts.push((i ? 'L' : 'M') + S.r1(X(n)) + ' ' + S.r1(Y(Math.max(0, expect(n)))));
-    }
-    o.push('<path class="line" d="' + pts.join(' ') + '"></path>');
+    // expected line
+    var k0 = Math.max(0, countAt(Math.pow(10, y0))), k1 = countAt(1e7);
+    o.push('<path class="line" d="M' + S.r1(X(k0)) + ' ' + S.r1(Y(nAt(k0))) + ' L' + S.r1(X(k1)) + ' ' + S.r1(Y(1e7)) + '"></path>');
     // projection beyond the frontier
-    var pr = [];
-    for (var j = 0; j <= 30; j++) {
-      var m = frontier * Math.pow(1e7 / frontier, j / 30);
-      pr.push((j ? 'L' : 'M') + S.r1(X(m)) + ' ' + S.r1(Y(N + M.expected(frontier, m))));
-    }
     if (frontier < 1e7) {
+      var pr = [];
+      for (var j = 0; j <= 30; j++) {
+        var m = frontier * Math.pow(1e7 / frontier, j / 30);
+        pr.push((j ? 'L' : 'M') + S.r1(X(N + M.expected(frontier, m))) + ' ' + S.r1(Y(m)));
+      }
       o.push('<path class="proj" d="' + pr.join(' ') + '"></path>');
     }
-    // found: a step line up to the frontier
-    var d = 'M' + S.r1(X(Math.pow(10, x0))) + ' ' + S.r1(Y(0));
-    P.forEach(function (p) { d += ' H' + S.r1(X(p.n)) + ' V' + S.r1(Y(p.k)); });
-    d += ' H' + S.r1(xf);
+    // found: up the n searched without a prime, one step right at each prime, up to the frontier
+    var d = 'M' + S.r1(X(0)) + ' ' + S.r1(Y(Math.pow(10, y0)));
+    P.forEach(function (p) { d += ' V' + S.r1(Y(p.n)) + ' H' + S.r1(X(p.k)); });
+    d += ' V' + S.r1(yf);
     o.push('<path class="step" d="' + d + '"></path>');
     o.push('<g>' + P.map(function (p) {
-      return '<circle class="dot prime" cx="' + S.r1(X(p.n)) + '" cy="' + S.r1(Y(p.k)) + '" r="3.6"><title>n = ' + fmt(p.n) + ' · ' + fmt(p.digits) + ' digits</title></circle>';
+      return '<circle class="dot prime" cx="' + S.r1(X(p.k)) + '" cy="' + S.r1(Y(p.n)) + '" r="3.6"><title>prime ' + p.k + ': n = ' + fmt(p.n) + ' · ' + fmt(p.digits) + ' digits</title></circle>';
     }).join('') + '</g>');
     var lastP = P[N - 1];
-    // above the expected curve, which runs just over the last dots
-    o.push('<text class="prime end" style="font-weight:600" x="' + S.r1(X(lastP.n) - 8) + '" y="' + S.r1(Math.max(T + 10, Y(Math.max(N, expect(lastP.n))) - 10)) + '">' + fmt(lastP.n) + '</text>');
+    // up and to the left of the last dot, clear of the dashed frontier line
+    o.push('<text class="prime end" style="font-weight:600" x="' + S.r1(X(N) - 8) + '" y="' + S.r1(Math.min(Y(lastP.n) - 8, yf - 5)) + '">' + fmt(lastP.n) + '</text>');
     var w = widest(P);
     if (w && w.k > 1) {
+      // left of the top of the longest vertical run: the expected line passes to the right there
       var a = P[w.k - 2];
-      o.push('<text x="' + S.r1(X(a.n) + 6) + '" y="' + S.r1(Y(a.k) + 17) + '">' + fmt(a.n) + ' → ' + fmt(w.n) +
-        ': widest gap (× ' + w.ratio.toFixed(1) + ')</text>');
+      o.push('<text class="end" x="' + S.r1(X(a.k) - 8) + '" y="' + S.r1(Y(w.n) + 4) + '">' + fmt(a.n) + ' → ' + fmt(w.n) + ': widest gap</text>');
     }
-    o.push('<text class="sans mid" x="18" y="' + ((T + B) / 2) + '" transform="rotate(-90 18 ' + ((T + B) / 2) + ')">primes with exponent ≤ n</text>');
-    o.push('<text class="sans mid" x="' + ((L + R) / 2) + '" y="288">n (log scale)</text>');
+    o.push('<text class="sans mid" x="16" y="' + ((T + B) / 2) + '" transform="rotate(-90 16 ' + ((T + B) / 2) + ')">n (log scale)</text>');
+    o.push('<text class="sans mid" x="' + ((L + R) / 2) + '" y="' + (H - 6) + '">k: the k-th known prime, smallest n first</text>');
     o.push('</svg>');
     return o.join('');
   }

@@ -160,6 +160,17 @@ p { text-wrap: pretty; }
 .row > .narrow { flex: 1 1 300px; min-width: 0; }
 .split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr)); gap: 24px; }
 .split.three { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
+/* a chart with two cards stacked beside it; the shorter column stretches, the chart card's legend stays at its foot */
+.chart-side { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 24px; }
+.chart-side > .card { display: flex; flex-direction: column; }
+.chart-side > .card > .legend { margin-top: auto; padding-top: 12px; }
+.stack { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.stack > .card { flex: 1 1 auto; }
+@media (max-width: 1040px) {
+  .chart-side { grid-template-columns: minmax(0, 1fr); }
+  .chart-side svg.chart { max-width: 720px; margin-inline: auto; }
+  .stack { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
+}
 .loading { color: var(--muted); font-size: 13px; }
 .error-box { padding: 12px 14px; border: 1px solid var(--bad-line); background: var(--bad-soft); color: var(--bad); border-radius: 6px; font-size: 13.5px; }
 

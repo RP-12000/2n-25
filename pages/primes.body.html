@@ -7,11 +7,25 @@
 
   <section class="tiles" aria-label="Summary" id="primes-tiles"><p class="loading">Loading…</p></section>
 
-  <section class="card" aria-labelledby="count-title">
-    <div class="card-head"><h2 id="count-title">Primes found against the expected count</h2><span class="meta" id="count-meta"></span></div>
-    <div class="chart-scroll" id="count-chart"></div>
-    <div class="legend" id="count-legend"></div>
-  </section>
+  <div class="chart-side">
+    <section class="card" aria-labelledby="count-title">
+      <div class="card-head"><h2 id="count-title">Primes found against the expected count</h2><span class="meta" id="count-meta"></span></div>
+      <div class="chart-scroll" id="count-chart"></div>
+      <div class="legend" id="count-legend"></div>
+    </section>
+    <div class="stack">
+      <section class="card" aria-labelledby="spacing-title">
+        <h2 id="spacing-title">Spacing</h2>
+        <p id="spacing-text"></p>
+        <div class="kv" id="spacing-kv"></div>
+      </section>
+      <section class="card" aria-labelledby="next-title">
+        <h2 id="next-title">What the next one would mean</h2>
+        <p id="next-text"></p>
+        <div class="kv" id="next-kv"></div>
+      </section>
+    </div>
+  </div>
 
   <section class="card" aria-labelledby="list-title">
     <div class="card-head">
@@ -38,17 +52,7 @@
       <div id="mod6"></div>
     </div>
     <div class="card">
-      <h2>Spacing</h2>
-      <p id="spacing-text"></p>
-      <div class="kv" id="spacing-kv"></div>
-    </div>
-    <div class="card">
       <h2>Prime or probable prime</h2>
       <p id="prp-text">Each entry from n = 33 up passed a base-3 Fermat test (PRP-3) in Prime95 with Gerbicz error checking. 2<sup>n</sup> − 25 has no large factored part in N − 1 or N + 1, so the large ones cannot be proven prime with today's methods; the small ones can be proven with ECPP.</p>
-    </div>
-    <div class="card">
-      <h2>What the next one would mean</h2>
-      <p id="next-text"></p>
-      <div class="kv" id="next-kv"></div>
     </div>
   </section>
