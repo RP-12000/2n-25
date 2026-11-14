@@ -409,11 +409,11 @@
     var sTgt = 1 - K / Math.log(target);
     var pct = function (x) { return (x * 100).toFixed(2) + ' %'; };
     var sign = function (x, s) { return '<td class="r ' + (x >= 0 ? 'pos' : 'neg') + '">' + (x >= 0 ? '+' : '−') + s + '</td>'; };
-    // a limit against the target as a power of ten: 3.5×10¹³ against 10¹⁴ is ×10^−0.46
+    // a limit against the target in powers of ten: 3.5×10¹³ against 10¹⁴ is −0.46
     var decCell = function (d) {
       var r = Math.round(d * 100) / 100;
-      var t = Number.isInteger(r) ? String(Math.abs(r)) : Math.abs(r).toFixed(2);
-      return '<td class="r ' + (r >= 0 ? 'pos' : 'neg') + '">×10<sup>' + (r < 0 ? '−' : '') + t + '</sup></td>';
+      var t = (r > 0 ? '+' : r < 0 ? '−' : '') + (Number.isInteger(r) ? String(Math.abs(r)) : Math.abs(r).toFixed(2));
+      return '<td class="r ' + (r >= 0 ? 'pos' : 'neg') + '" title="Limit ÷ target = 10^' + t + '">' + t + '</td>';
     };
     var cell = function (v) { return '<td class="r">' + v + '</td>'; };
     var rows = [];
