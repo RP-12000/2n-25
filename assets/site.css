@@ -294,6 +294,7 @@ svg.chart.small { min-width: 420px; }
 .stage.next { border-color: var(--accent); background: var(--accent-wash); }
 .stage .tag { font: 600 12px var(--mono); color: var(--muted); text-transform: uppercase; }
 .stage.next .tag { color: var(--accent-ink); }
+.stage.done .tag { color: var(--good); }
 .stage .t { margin-top: 6px; font-weight: 600; }
 .stage .w { margin-top: 4px; font-size: 12.5px; color: var(--muted); }
 .stage .f { margin-top: 10px; font: 13px var(--mono); }

@@ -31,8 +31,9 @@ on the archive drive or <a>M-<b>M as in archive/):
                                      the range folders that have Mass Prime Siever output of their own, and
                                      every factor is checked like the project's own. Its checked factors
                                      always strike n out; it counts toward the sieve depth only when it found
-                                     at least 80% of the factors expected for its p range, or when its id is
-                                     in accepted_sieve_uploads (content/site.json)
+                                     at least 80% of the factors expected for its p range (from 10^6 up when
+                                     it starts below 1000), or when its id is in accepted_sieve_uploads
+                                     (content/site.json). An upload that the archive also holds counts once.
 
 Usage:
   python tools/sync_archive.py      # when the archive drive is attached: refresh archive/
@@ -276,6 +277,7 @@ MPS_BASE_P = 7          # 2, 3 and 5 never divide 2^n - 25 for odd n > 4, so a s
 TRIAL_LIMIT = 10_000_000  # the exponent page finds factors below this itself; larger sieve factors go in the shards
 UPLOAD_MIN_RATIO = 0.8    # an uploaded sieve slice counts toward the depth if it found this share of the expected factors
 UPLOAD_MIN_EXPECTED = 100  # ... and the expected number is large enough to judge
+UPLOAD_JUDGE_FROM = 10**6  # a slice that starts below 1000 is judged by its factors from here up
 SMALL_PRIMES = None       # bytearray, 1 at the primes below TRIAL_LIMIT (made on first use)
 # Miller-Rabin with the first k prime bases is exact below each bound (Jaeschke; Sorenson and Webster)
 MR_BASES = (2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41)
@@ -558,15 +560,17 @@ def uploaded_sieve(root, notes, accepted):
         who = str(up.get("handle") or "anonymous")[:40]
         for e in read_mps_file(path, notes, log):
             odd = len(range(max(e["n0"], 5) | 1, min(e["n1"], N_MAX), 2))
-            found = sum(len(x.get("factors") or []) for x in e["factored"] if isinstance(x, dict))
-            want = expected_factors(odd, e["p0"], e["p1"])
+            # small primes do not follow ln(ln p1 / ln p0) for this sequence (3 and 5 never divide 2^n - 25),
+            # so a slice that starts below 1000 is judged by its factors from UPLOAD_JUDGE_FROM up
+            low = e["p0"] if e["p0"] >= 1000 else UPLOAD_JUDGE_FROM
+            found = sum(1 for x in e["factored"] if isinstance(x, dict) for f in (x.get("factors") or []) if int(f) >= low)
+            want = expected_factors(odd, low, e["p1"])
             plausible = want is not None and want >= UPLOAD_MIN_EXPECTED and found >= UPLOAD_MIN_RATIO * want
             e.update({"who": who, "upload": sid, "depth_ok": sid in accepted or plausible})
             if not e["depth_ok"]:
-                notes.add("uploaded sieve slice not counted toward the sieve depth (too few factors, or too small to judge); "
-                          "add its id to accepted_sieve_uploads in content/site.json once you trust it",
-                          f"{sid} by {who}: p {e['p0']}-{e['p1']}, n {e['n0']}-{e['n1']}, {found} factors" +
-                          (f", about {round(want)} expected" if want else ""))
+                # noted only if the slice is used: an upload that the archive holds too counts once, from the archive
+                e["depth_note"] = (f"{sid} by {who}: p {e['p0']}-{e['p1']}, n {e['n0']}-{e['n1']}, {found} factors" +
+                                   (f" from {low:,}" if low != e["p0"] else "") + (f", about {round(want)} expected" if want else ""))
             out.append(e)
     return out
 
@@ -765,6 +769,7 @@ class Archive:
         self.uploads = []                    # uploaded sieve entries
         self.uploads_seen = set()            # id() of uploaded entries that met a range folder
         self.uploads_archived = set()        # uploads whose slices the archive keeps too (counted once)
+        self.uploads_used = set()            # id() of uploaded entries merged into some range folder
         self.partial = []                    # rows sieved over some p ranges, not from p <= 7 yet
         self.confirmed = set()               # uploaded probable primes the project has re-tested (content/site.json)
         self.reported = {}                   # n -> who, uploaded probable primes not confirmed yet
@@ -798,6 +803,9 @@ class Archive:
         for e in self.uploads:
             if id(e) not in self.uploads_seen:
                 self.notes.add("uploaded sieve output for n outside every range folder (not used)", f"{e['upload']}: n {e['n0']}-{e['n1']}")
+            elif id(e) in self.uploads_used and not e["depth_ok"]:
+                self.notes.add("uploaded sieve slice not counted toward the sieve depth (too few factors, or too small to judge); "
+                               "add its id to accepted_sieve_uploads in content/site.json once you trust it", e["depth_note"])
         sub_root = os.path.join(self.root, "Submissions")
         if os.path.isdir(sub_root):
             for path in sorted(glob.glob(os.path.join(glob.escape(sub_root), "*", "submission.json"))):
@@ -815,6 +823,7 @@ class Archive:
             self.uploads_archived.update(e["upload"] for e in kept)
             kept_ids = {id(e) for e in kept}
             extra = [e for e in extra if id(e) not in kept_ids]
+            self.uploads_used.update(id(e) for e in extra)
         survivors = set()
         if mps:
             # Mass Prime Siever 12.0: merge the slices (and uploaded ones), checking every factor

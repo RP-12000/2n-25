@@ -29,6 +29,7 @@ archive/pm1_splits.json     prime factors of composite P-1 results, worked out o
 tools/sync_archive.py       refreshes archive/ from the archive drive
 tools/build.py       reads archive/, checks it, writes data/
 tools/pull_submissions.py   copies uploads from the Worker into archive/Submissions
+tools/auto_update.py        what the scheduled task runs: new uploads -> build -> push data/
 tools/make_pages.py  rebuilds the HTML pages after a change to pages/ or the shared header
 tools/sieve_layers.c        writes content/sieve_layers.json (and the n list for trial_left.py)
 tools/trial_left.py  writes content/trial_left.json from that n list
@@ -36,6 +37,9 @@ worker/              Cloudflare Worker that receives uploads (deployed separatel
 ```
 
 ## Updating the site
+
+On the PC that holds `archive/`, a scheduled task does this every 15 minutes (see *Updating by itself*
+below). By hand:
 
 ```
 python tools/sync_archive.py                  # when the archive drive is attached
@@ -58,6 +62,34 @@ cannot open a path with `~` followed by a digit. `build.py --archive <folder>` r
 
 `build.py` prints a summary. Anything it could not use or did not trust is listed in
 `build_report.txt` next to `data/`; that file is not published.
+
+### Updating by itself
+
+On the PC that holds `archive/`, a scheduled task runs `tools/auto_update.py` every 15 minutes while
+someone is logged on. It saves new uploads (`pull_submissions.py --new-only`: two key lists a run when
+nothing is new, about 200 a day, inside the free plan's 1,000 a day), runs `sync_archive.py --back`
+when the archive drive is attached, and stops there if nothing `build.py` reads has changed. Otherwise
+it rebuilds `data/`, checks that no known prime, PRP test, P-1 factor, resolved n or sieved range went
+missing (partial sieves included), that no sieve depth shrank and that the frontier did not move back,
+and then commits `data/` alone (message "Update data…", by RP-12000 with GitHub's no-reply address)
+and pushes it. Data that fails a check is not published: `data/` is put back and the next run waits
+for new input or a new commit.
+
+It never commits anything outside `data/` and never pushes a commit it did not make. It does nothing
+while files outside `data/` have uncommitted changes, or while this copy has commits of someone else's
+that are not on GitHub yet, so work on the code is never published by it. Once such work is pushed (or
+undone), the next run catches up. It writes what it did to `auto_update.log` (a problem that keeps
+happening is written once) and keeps its state in `auto_update_state.json`; neither is committed.
+
+```
+schtasks /Query /TN "2n-25 site auto-update" /V /FO LIST    # is it there, when did it last run
+schtasks /Change /TN "2n-25 site auto-update" /DISABLE      # pause it (/ENABLE to resume)
+py -3 tools\auto_update.py --dry-run                        # see what it would publish now
+```
+
+The task was made with PowerShell's `Register-ScheduledTask`: action `pyw.exe -3
+tools\auto_update.py` in this folder (no window), repeat every 15 minutes, also on battery, one run at
+a time. `schtasks /Delete /TN "2n-25 site auto-update"` removes it.
 
 ### What build.py checks
 
@@ -83,8 +115,9 @@ cannot open a path with `~` followed by a digit. `build.py --archive <folder>` r
 * **Uploaded sieve output** (`Submissions/<id>/TF/`) is merged into the range folders that have Mass
   Prime Siever output of their own, and every factor is checked the same way. Its checked factors
   always strike n out. It counts toward the sieve depth only if it found at least 80% of the factors
-  expected for its p range (about odd n × ln(ln P1 / ln P0)), or once its id is in
-  `accepted_sieve_uploads` in `content/site.json`; otherwise the report lists it. Who found a factor
+  expected for its p range (about odd n × ln(ln P1 / ln P0); a slice that starts below 1000 is judged
+  by its factors above 10⁶), or once its id is in `accepted_sieve_uploads` in `content/site.json`;
+  otherwise the report lists it. Who found a factor
   above 10⁷ is shown on the exponent page. An upload whose p and n ranges a slice in the archive
   already covers is skipped, so a result filed in the archive is not counted twice.
 

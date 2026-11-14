@@ -10,3 +10,9 @@ worker/.wrangler/
 # never commit the upload admin token
 upload_admin_token.txt
 .dev.vars
+# written by tools/auto_update.py on the PC that runs the scheduled task
+auto_update.log
+auto_update.log.1
+auto_update.lock
+auto_update_state.json
+auto_update_state.json.tmp

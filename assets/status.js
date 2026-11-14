@@ -395,7 +395,10 @@
     h.push('<div class="card-head"><h2>Now: <span class="mono">' + fmt(act.lo) + ' ≤ n &lt; ' + fmt(act.hi) + '</span></h2>' + badge + '</div>');
     if (site.active && site.active.note) h.push('<p>' + S.supHTML(esc(site.active.note)) + '</p>');
     h.push('<div class="stages">' + (site.stages || []).map(function (st) {
-      return '<div class="stage ' + (st.state === 'next' ? 'next' : '') + '"><div class="tag">' + S.supHTML(esc(st.tag)) + '</div><div class="t">' +
+      // a sieve stage with p_to counts as done once every row of the range is sieved that deep
+      var done = st.state === 'done' || (st.p_to && depth >= st.p_to);
+      var tag = done && st.state !== 'done' ? String(st.tag).replace(/·.*$/, '· done') : st.tag;
+      return '<div class="stage ' + (done ? 'done' : st.state === 'next' ? 'next' : '') + '"><div class="tag">' + S.supHTML(esc(tag)) + '</div><div class="t">' +
         S.supHTML(esc(st.title)) + '</div><div class="w">' + S.supHTML(esc(st.where)) + '</div><div class="f">' + esc(st.figure) + '</div></div>';
     }).join('') + '</div>');
     var depthPct = depth ? Math.min(100, Math.log10(depth) / tLog * 100) : 0;

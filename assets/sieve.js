@@ -377,10 +377,17 @@
       document.getElementById('plan-title').innerHTML = 'Sieve assignments · ' + fmt(act.lo) + ' ≤ n &lt; ' + fmt(act.hi);
       document.getElementById('plan-meta').textContent = fmt(odd) + ' odd n';
     }
+    // a step counts as done once every row of the active range is sieved at least that deep
+    var actRows = act ? rows.filter(function (r) { return inAct(r, act); }) : [];
+    var depth = actRows.length && actRows.every(function (r) { return r.sieved && r.sieve && r.sieve.depth; }) ?
+      Math.min.apply(null, actRows.map(function (r) { return r.sieve.depth; })) : 0;
+    var left = actRows.reduce(function (t, r) { return t + (r.survivors || 0); }, 0);
     el.innerHTML = '<table class="data"><thead><tr><th>p range</th><th class="text">Machine</th><th>Backend</th><th class="text">Status</th><th class="r">Survivors</th></tr></thead><tbody>' +
       plan.map(function (s) {
+        var reached = depth && depth >= s.p_to && !/^done$/i.test(s.status || '');
+        var surv = reached && depth === s.p_to ? fmt(left) : s.survivors;
         return '<tr><td>' + pLabel(s.p_from) + ' – ' + pLabel(s.p_to) + '</td><td class="text">' + esc(s.machine) + '</td><td>' + esc(s.backend) +
-          '</td><td class="text">' + statusPill(s.status) + '</td><td class="r">' + esc(s.survivors) + '</td></tr>';
+          '</td><td class="text">' + statusPill(reached ? 'Done' : s.status) + '</td><td class="r">' + esc(surv) + '</td></tr>';
       }).join('') + '</tbody></table>';
   }
   function renderBench(site) {

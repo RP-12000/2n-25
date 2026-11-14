@@ -22,6 +22,7 @@ The admin token is read from the UPLOAD_ADMIN_TOKEN environment variable or from
 
 Usage:
   python tools/pull_submissions.py                 # list and save, keep everything on the Worker
+  python tools/pull_submissions.py --new-only      # save only uploads that are not saved yet
   python tools/pull_submissions.py --delete        # also remove what was saved
   python tools/sync_archive.py --back              # later, with the archive drive attached
 
@@ -109,6 +110,19 @@ def proof_md5s(record):
     return out
 
 
+def saved_already(folder):
+    """True when an earlier run saved this upload and the proof of every probable prime it reports."""
+    path = os.path.join(folder, "submission.json")
+    if not os.path.exists(path):
+        return False
+    try:
+        with open(path, encoding="utf-8") as f:
+            primes = json.load(f).get("primes") or []
+    except (OSError, ValueError):
+        return False
+    return all(os.path.exists(os.path.join(folder, f"{n}.proof")) for n in primes)
+
+
 def odd_range(lo, hi):
     lo = max(lo, 5)
     return range(lo | 1, hi, 2)
@@ -147,12 +161,24 @@ def tf_entry(record, text):
     return entry, None
 
 
-def pull_sieve(w, target, delete):
+def sieve_saved(target, sid):
+    folder = os.path.join(target, sid, "TF")
+    return os.path.exists(os.path.join(folder, "results.json")) and os.path.exists(os.path.join(folder, "upload.json"))
+
+
+def pull_sieve(w, target, delete, new_only=False):
     """Save sieve uploads (tf/<id> and tfdata/<id>); returns (saved, n with factors, factors, removed, problems)."""
     records = w.keys("tf/")
-    datas = {k["name"].split("/", 1)[1] for k in w.keys("tfdata/")}
+    done = set()
+    if new_only:
+        # skip what an earlier run saved; with nothing new, the factor lines are not even listed
+        done = {sid for sid in (r["name"].split("/", 1)[1] for r in records) if sieve_saved(target, sid)}
+        records = [r for r in records if r["name"].split("/", 1)[1] not in done]
+        if not records:
+            return 0, 0, 0, 0, 0
+    datas = {k["name"].split("/", 1)[1] for k in w.keys("tfdata/")} - done
     if records or datas:
-        print(f"{len(records)} sieve upload(s) on the Worker")
+        print(f"{len(records)} {'new ' if new_only else ''}sieve upload(s) on the Worker")
     saved = entries = factors = removed = problems = 0
     for item in records:
         key = item["name"]
@@ -215,6 +241,7 @@ def main():
     ap.add_argument("--endpoint", help="upload Worker URL (default: upload_endpoint in content/site.json)")
     ap.add_argument("--token-file", default=os.path.join(os.path.expanduser("~"), "upload_admin_token.txt"))
     ap.add_argument("--delete", action="store_true", help="remove saved and checked items from the Worker")
+    ap.add_argument("--new-only", action="store_true", help="skip uploads saved by an earlier run (no download)")
     args = ap.parse_args()
 
     endpoint = args.endpoint
@@ -231,20 +258,26 @@ def main():
     target = os.path.join(args.archive, "Submissions")
 
     subs = w.keys("sub/")
-    proofs = w.keys("proof/")
-    print(f"{len(subs)} upload(s) and {len(proofs)} proof file(s) on the Worker")
+    done = set()
+    if args.new_only:
+        # skip uploads an earlier run saved; with nothing new, the proof files are not even listed
+        done = {sid for sid in (s["name"].split("/", 1)[1] for s in subs) if saved_already(os.path.join(target, sid))}
+        subs = [s for s in subs if s["name"].split("/", 1)[1] not in done]
+    proofs = w.keys("proof/") if subs or not args.new_only else []
+    print(f"{len(subs)} {'new ' if args.new_only else ''}upload(s) and {len(proofs)} proof file(s) on the Worker")
     saved = lines = problems = removed = kept = 0
     by_sub = {}
     for p in proofs:
         parts = p["name"].split("/")
-        if len(parts) == 3:
+        if len(parts) == 3 and parts[1] not in done:
             by_sub.setdefault(parts[1], []).append(p)
 
+    skipped = len(done)
     for item in subs:
         key = item["name"]
         sid = key.split("/", 1)[1]
-        record = json.loads(w.get(key))
         folder = os.path.join(target, sid)
+        record = json.loads(w.get(key))
         os.makedirs(folder, exist_ok=True)
         path = os.path.join(folder, "submission.json")
         with open(path, "w", encoding="utf-8") as f:
@@ -286,10 +319,10 @@ def main():
 
     for sid, left in by_sub.items():
         print(f"  proof file(s) without an upload record: {[p['name'] for p in left]} (left on the Worker)")
-    tf_saved, tf_n, tf_factors, tf_removed, tf_problems = pull_sieve(w, target, args.delete)
+    tf_saved, tf_n, tf_factors, tf_removed, tf_problems = pull_sieve(w, target, args.delete, args.new_only)
     problems += tf_problems
     removed += tf_removed
-    print(f"Saved {saved} upload(s), {lines:,} result lines, to {target}")
+    print(f"Saved {saved} upload(s), {lines:,} result lines, to {target}" + (f"; {skipped} saved before" if skipped else ""))
     if tf_saved:
         print(f"Saved {tf_saved} sieve upload(s): {tf_n:,} n with {tf_factors:,} factor(s)")
     if args.delete:

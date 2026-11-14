@@ -30,32 +30,33 @@
     "from_n": 6643853
   },
   "sieve_target": 100000000000000,
-  "prp_from_depth": 1000000000000,
+  "prp_from_depth": 40000000000000,
   "exponent_start_after": 3600000,
   "active": {
     "lo": 3600000,
     "hi": 5000000,
     "badge": "Sieving",
-    "note": "700,000 odd n, never sieved before. Any prime found here is larger than our record 10^1036183 + 9 (1,036,184 digits)."
+    "note": "700,000 odd n, first sieved in November 2026. Any prime found here is larger than our record 10^1036183 + 9 (1,036,184 digits)."
   },
   "stages": [
     {
+      "state": "done",
+      "tag": "1 · done",
+      "title": "Sieve p < 3.5 × 10^13",
+      "where": "Laptop p < 10^13 · OpenCL; Kaggle 10^13 – 3.5 × 10^13 · CUDA",
+      "figure": "47,468 left"
+    },
+    {
       "state": "next",
-      "tag": "1 · running",
-      "title": "Sieve p < 10^13",
-      "where": "Laptop · Radeon 780M + 15 threads · OpenCL",
-      "figure": "≈ 49,600 left"
+      "tag": "2 · running",
+      "title": "Sieve 3.5 × 10^13 → 4 × 10^13",
+      "where": "Kaggle · T4 · CUDA",
+      "figure": "≈ 47,300 left",
+      "p_to": 40000000000000
     },
     {
       "state": "planned",
-      "tag": "2 · in part",
-      "title": "Sieve 10^13 → 10^14",
-      "where": "Kaggle · 4 × T4 · CUDA: 10^13 – 2.45 × 10^13 done",
-      "figure": "≈ 46,000 left"
-    },
-    {
-      "state": "planned",
-      "tag": "3 · at 10^12",
+      "tag": "3 · next",
       "title": "PRP, smallest n first",
       "where": "Prime95 PRP-3 · ≈ 50 core-minutes each",
       "figure": "≈ 230 tests / day"
@@ -67,24 +68,32 @@
       "p_to": 10000000000000,
       "machine": "Laptop · Radeon 780M + 15 threads",
       "backend": "OpenCL",
-      "status": "Running",
-      "survivors": "≈ 49,600"
+      "status": "Done",
+      "survivors": "49,453"
     },
     {
       "p_from": 10000000000000,
-      "p_to": 24500000000000,
+      "p_to": 35000000000000,
       "machine": "Kaggle · 4 × T4",
       "backend": "CUDA",
       "status": "Done",
-      "survivors": "≈ 48,100"
+      "survivors": "47,468"
     },
     {
-      "p_from": 24500000000000,
+      "p_from": 35000000000000,
+      "p_to": 40000000000000,
+      "machine": "Kaggle · T4",
+      "backend": "CUDA",
+      "status": "Running",
+      "survivors": "≈ 47,300"
+    },
+    {
+      "p_from": 40000000000000,
       "p_to": 100000000000000,
       "machine": "Not assigned yet",
       "backend": "—",
       "status": "Planned",
-      "survivors": "≈ 46,000"
+      "survivors": "≈ 45,900"
     }
   ],
   "benchmarks": {
@@ -266,8 +275,12 @@
       "Mass Prime Siever 12.0 adds CUDA and OpenCL; P-1 dropped in favour of a deeper sieve."
     ],
     [
+      "2026-11-14",
+      "3.6M – 5M sieved to 3.5 × 10^13 (laptop p < 10^13, Kaggle the rest): 47,468 of the 700,000 odd n are left."
+    ],
+    [
       "next",
-      "Sieve 3.6M – 5M to 10^12, start PRP from 3.6M, keep sieving to 10^14 on Kaggle."
+      "Sieve 3.6M – 5M on to 4 × 10^13, then PRP from 3.6M, smallest n first."
     ]
   ],
   "pause": {
