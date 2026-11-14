@@ -21,6 +21,11 @@ that results added here first are never overwritten. Upload folders are only eve
 With --back, uploads that tools/pull_submissions.py saved in archive/Submissions (proof files included)
 and that the archive drive does not have yet are copied there too.
 
+Every copy is written to <name>.part first and renamed only when it is complete, so pulling the drive out
+in the middle never leaves half a file under the real name; the next run copies that file again. A file
+on the drive that changed in the last two minutes, or that changes while it is copied, may still be being
+written, so it is left for a later run. A file that cannot be copied is listed and the exit code is 1.
+
 Usage:
   python tools/sync_archive.py              # archive drive -> archive/
   python tools/sync_archive.py --dry-run    # only count what would be copied
@@ -42,6 +47,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RANGE_DIR = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*M\s*[~-]\s*(\d+(?:\.\d+)?)\s*M\s*$", re.I)
 SIEVE_TEXT = {"origin.txt", "override.txt", "log.txt"}
 SLACK = 2.0  # seconds; FAT and exFAT drives keep modification times to 2 s
+SETTLE_S = 120  # a file on the drive changed this recently may still be being written: left for a later run
+PART = ".part"  # a copy is written as <name>.part and renamed when complete
 
 
 def local_name(name):
@@ -80,31 +87,56 @@ class Counts:
         self.dry_run = dry_run
         self.copied = self.same = self.bytes = 0
         self.kept = []                                    # files left alone because the copy here is newer
+        self.busy = []                                    # files that may still be being written
+        self.failed = []                                  # (file, error) for copies that went wrong
 
-    def copy(self, src, dst, overwrite=True):
-        s = os.stat(src)
-        if os.path.exists(dst):
-            if not overwrite:
-                self.same += 1
+    def copy(self, src, dst, overwrite=True, settle=True):
+        """Copy src to dst through dst.part. settle=False for files this program's own tools wrote."""
+        try:
+            s = os.stat(src)
+            if os.path.exists(dst):
+                if not overwrite:
+                    self.same += 1
+                    return
+                d = os.stat(dst)
+                if d.st_size == s.st_size and abs(d.st_mtime - s.st_mtime) <= SLACK:
+                    self.same += 1
+                    return
+                if d.st_mtime > s.st_mtime + SLACK:
+                    self.kept.append(dst)
+                    return
+            if settle and s.st_mtime > time.time() - SETTLE_S:
+                self.busy.append(src)
                 return
-            d = os.stat(dst)
-            if d.st_size == s.st_size and abs(d.st_mtime - s.st_mtime) <= SLACK:
-                self.same += 1
-                return
-            if d.st_mtime > s.st_mtime + SLACK:
-                self.kept.append(dst)
-                return
-        if not self.dry_run:
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-            shutil.copy2(src, dst)
+            if not self.dry_run:
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                part = dst + PART
+                shutil.copy2(src, part)
+                t = os.stat(src)
+                if (t.st_size, t.st_mtime_ns) != (s.st_size, s.st_mtime_ns):
+                    os.remove(part)                       # changed while it was copied: next run
+                    self.busy.append(src)
+                    return
+                os.replace(part, dst)
+        except OSError as e:                              # drive pulled out, file in use, ...
+            self.failed.append((src, e))
+            return
         self.copied += 1
         self.bytes += s.st_size
+
+    def report(self):
+        for path in self.busy:
+            print(f"  changed in the last {SETTLE_S // 60} minutes or while it was copied, left for a later run: {path}")
+        for path, e in self.failed:
+            print(f"  could not copy {path}: {e}")
 
 
 def walk_files(root):
     for folder, dirs, files in os.walk(root):
         dirs.sort()
         for name in sorted(files):
+            if name.endswith(PART):
+                continue                                  # a copy that was cut short
             path = os.path.join(folder, name)
             yield path, os.path.relpath(path, root).replace(os.sep, "/").split("/")
 
@@ -148,14 +180,20 @@ def main():
         print(f"  newer here than on the drive, left as is: {path}")
     if c.kept:
         print("  Copy those to the archive drive yourself if they belong there.")
+    c.report()
+    failed = len(c.failed)
 
     if args.back:
         back = Counts(args.dry_run)
         here = os.path.join(args.dest, "Submissions")
         if os.path.isdir(here):
             for path, parts in walk_files(here):
-                back.copy(path, os.path.join(subs, *parts), overwrite=False)
+                back.copy(path, os.path.join(subs, *parts), overwrite=False, settle=False)
         print(f"{verb} {back.copied:,} upload file(s), {back.bytes / 1048576:,.1f} MB, to {subs}")
+        back.report()
+        failed += len(back.failed)
+    if failed:
+        sys.exit(f"{failed:,} file(s) could not be copied; the next run tries them again")
     if not args.dry_run:
         print("Next: python tools/build.py")
 
