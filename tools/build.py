@@ -4,7 +4,7 @@
 Reads archive/ in this folder, the copy of the project archive that tools/sync_archive.py keeps (or
 another copy given with --archive), and writes the JSON files that the pages load:
 
-  data/summary.json   totals, search frontier, latest results, daily counts
+  data/summary.json   totals, search frontier and the next n to test, latest results, daily counts
   data/ranges.json    one row per 0.2M of n below 10^7
   data/primes.json    every known n, with who first found it
   data/sieve.json     P-1 factor sizes and survivor constants
@@ -816,6 +816,7 @@ class Archive:
         mps = mps_entries(tf, self.notes) if os.path.isdir(tf) else []
         extra = [e for e in self.uploads if e["n0"] < hi and e["n1"] > lo]
         self.uploads_seen.update(id(e) for e in extra)
+        named = {}                           # (n, p) -> name of the earliest upload that lists that factor
         if mps:
             # an upload whose p range over these n the archive keeps too (the project's own Kaggle runs) counts once
             kept = [e for e in extra if any(o["p0"] <= e["p0"] and o["p1"] >= e["p1"] and o["n0"] <= max(e["n0"], lo)
@@ -824,6 +825,18 @@ class Archive:
             kept_ids = {id(e) for e in kept}
             extra = [e for e in extra if id(e) not in kept_ids]
             self.uploads_used.update(id(e) for e in extra)
+            # its factors keep the name they were uploaded under, as they would without the archive copy
+            for e in kept:
+                for item in e["factored"]:
+                    try:
+                        n = int(item["n"])
+                        fs = [int(f) for f in item.get("factors") or []]
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                    if lo <= n < hi:
+                        for f in fs:
+                            if e["p0"] <= f < e["p1"]:
+                                named.setdefault((n, f), e["who"])
         survivors = set()
         if mps:
             # Mass Prime Siever 12.0: merge the slices (and uploaded ones), checking every factor
@@ -834,8 +847,9 @@ class Archive:
                 self.sieve_smallest[n] = p
                 if p > TRIAL_LIMIT:
                     self.sieve_factors[n] = str(p)
-                    if removed_by.get(n):
-                        self.sieve_factor_by[n] = self.index(self.users, removed_by[n])
+                    by = removed_by.get(n) or named.get((n, p))
+                    if by:
+                        self.sieve_factor_by[n] = self.index(self.users, by)
             info = None
         else:
             for e in extra:
@@ -1094,6 +1108,18 @@ def build(archive_root, out_dir, content_path):
             break
     if frontier is None:
         frontier = N_MAX
+    # the first n with no known factor and no result, smallest first: the lookup box and the Join page's work lines
+    next_open = []
+    for row in rows:
+        if row["hi"] <= frontier:
+            continue
+        if not row["sieved"] or len(next_open) == 3:
+            break
+        for n in between(surv_sorted, max(row["lo"], frontier), row["hi"]):
+            if not any(r[3] for r in arc.pm1.get(n, [])) and n not in arc.prp:
+                next_open.append(n)
+                if len(next_open) == 3:
+                    break
     below = between(surv_sorted, 0, frontier)
     milestones = {}
     latest_t = ""
@@ -1139,6 +1165,7 @@ def build(archive_root, out_dir, content_path):
         "n_max": N_MAX,
         "frontier": frontier,
         "frontier_date": frontier_date,
+        "next_open": next_open,
         "last_result": max(all_times) if all_times else None,
         "counts": counts,
         "largest_prime": max(primes_all) if primes_all else None,

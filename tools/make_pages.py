@@ -48,7 +48,7 @@ def page(fname, key, title, desc, script):
     </div>
     <form class="lookup" role="search" action="exponent.html">
       <label for="hdr-n">n =</label>
-      <input id="hdr-n" class="input" name="n" type="text" inputmode="numeric" placeholder="3600025" autocomplete="off">
+      <input id="hdr-n" class="input" name="n" type="text" inputmode="numeric" autocomplete="off">
       <button class="btn" type="submit">Look up</button>
     </form>
   </div>

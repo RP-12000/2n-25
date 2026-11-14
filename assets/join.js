@@ -16,7 +16,7 @@
   var TABS = {
     prp: {
       file: 'worktodo.txt for Prime95 30.19 or later',
-      code: 'PRP=1,2,3600025,-25\nPRP=1,2,3600045,-25\nPRP=1,2,3600049,-25',
+      code: 'PRP=1,2,n,-25',               // the next n to test once the data is in (fillCards)
       hint: 'Each line tests 1 × 2<sup>n</sup> − 25. Prime95 writes one JSON line per test to <code>results.json.txt</code>; that file is what you upload.'
     },
     sieve: {
@@ -69,6 +69,12 @@
     if (links.prime95) el('link-prime95').href = links.prime95;
     if (links.issues) { el('link-issue').href = links.issues; el('link-issue-2').href = links.issues; }
     if (links.repo) el('link-repo').href = links.repo;
+    // example work: the smallest n with no known factor and no PRP test yet
+    var next = sum.next_open && sum.next_open.length ? sum.next_open : (sum.frontier < sum.n_max ? [sum.frontier] : []);
+    if (next.length) {
+      TABS.prp.code = next.map(function (n) { return 'PRP=1,2,' + n + ',-25'; }).join('\n');
+      if (el('tab-prp').getAttribute('aria-selected') === 'true') el('work-code').textContent = TABS.prp.code;
+    }
 
     if (odd) {
       // laptop-days: each test costs (n / n0)^e times a test at n0, and the laptop does perDay tests a day at n0

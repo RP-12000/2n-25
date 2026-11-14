@@ -28,7 +28,7 @@
     </div>
     <form class="lookup" role="search" action="exponent.html">
       <label for="hdr-n">n =</label>
-      <input id="hdr-n" class="input" name="n" type="text" inputmode="numeric" placeholder="3600025" autocomplete="off">
+      <input id="hdr-n" class="input" name="n" type="text" inputmode="numeric" autocomplete="off">
       <button class="btn" type="submit">Look up</button>
     </form>
   </div>
@@ -98,9 +98,7 @@
       </div>
       <div id="work-panel" role="tabpanel" aria-labelledby="tab-prp">
         <p class="small mt12" id="work-file">worktodo.txt for Prime95 30.19 or later</p>
-        <pre class="code" id="work-code">PRP=1,2,3600025,-25
-PRP=1,2,3600045,-25
-PRP=1,2,3600049,-25</pre>
+        <pre class="code" id="work-code">PRP=1,2,n,-25</pre>
         <p id="work-hint">Each line tests 1 × 2<sup>n</sup> − 25. Prime95 writes one JSON line per test to results.json.txt; that file is what you upload.</p>
       </div>
     </div>
@@ -131,7 +129,7 @@ PRP=1,2,3600049,-25</pre>
       </div>
       <div class="field">
         <label for="up-paste">Or paste lines</label>
-        <textarea class="input" id="up-paste" rows="4" spellcheck="false" placeholder='{"status":"C","k":1,"b":2,"n":3600025,"c":-25,"worktype":"PRP-3","res64":"…",…}'></textarea>
+        <textarea class="input" id="up-paste" rows="4" spellcheck="false" placeholder='{"status":"C","k":1,"b":2,"n":…,"c":-25,"worktype":"PRP-3","res64":"…",…}'></textarea>
       </div>
       <div id="up-preview" aria-live="polite"></div>
       <div class="actions">

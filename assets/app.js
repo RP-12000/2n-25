@@ -521,15 +521,18 @@
       });
     });
   }
-  function initFooter() {
+  function initFromSummary() {
     Site.load('summary').then(function (s) {
       Array.prototype.forEach.call(document.querySelectorAll('[data-generated]'), function (e) { e.textContent = s.generated; });
+      // the lookup box suggests the smallest n with no known factor and no PRP test
+      var next = (s.next_open && s.next_open[0]) || (s.frontier < s.n_max ? s.frontier : 0);
+      if (next) Array.prototype.forEach.call(document.querySelectorAll('form.lookup input'), function (e) { e.placeholder = String(next); });
     }).catch(function () {});
   }
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function () { initLookup(); initFooter(); });
+    document.addEventListener('DOMContentLoaded', function () { initLookup(); initFromSummary(); });
   } else {
     initLookup();
-    initFooter();
+    initFromSummary();
   }
 })();

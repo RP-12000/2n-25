@@ -409,6 +409,12 @@
     var sTgt = 1 - K / Math.log(target);
     var pct = function (x) { return (x * 100).toFixed(2) + ' %'; };
     var sign = function (x, s) { return '<td class="r ' + (x >= 0 ? 'pos' : 'neg') + '">' + (x >= 0 ? '+' : '−') + s + '</td>'; };
+    // a limit against the target as a power of ten: 3.5×10¹³ against 10¹⁴ is ×10^−0.46
+    var decCell = function (d) {
+      var r = Math.round(d * 100) / 100;
+      var t = Number.isInteger(r) ? String(Math.abs(r)) : Math.abs(r).toFixed(2);
+      return '<td class="r ' + (r >= 0 ? 'pos' : 'neg') + '">×10<sup>' + (r < 0 ? '−' : '') + t + '</sup></td>';
+    };
     var cell = function (v) { return '<td class="r">' + v + '</td>'; };
     var rows = [];
     var scope, note;
@@ -422,11 +428,11 @@
       var b1 = own ? own[1] : (ranP1 ? row.pm1.b1 : 0);
       var b2 = own ? own[2] : (ranP1 ? row.pm1.b2_median : 0);
       var b2Text = b1 ? (b2 ? (own ? '' : '≈ ') + fmt(b2) : 'stage 1 only') : '—';
-      var bits = Math.log2(row.sieve.depth) - Math.log2(target);
+      var dec = Math.log10(row.sieve.depth / target);
       rows.push('<tr><th class="text" scope="row">Actual</th>' + cell(S.depth(row.sieve.depth)) + cell(pct(sAct)) + cell(b1 ? fmt(b1) : '—') + cell(b2Text) +
         cell(ranP1 ? pct(pAct) : '—') + cell(pct(cAct)) + '</tr>');
       rows.push('<tr class="alt"><th class="text" scope="row">Target</th>' + cell(S.depth(target)) + cell(pct(sTgt)) + cell('—') + cell('—') + cell('—') + cell(pct(sTgt)) + '</tr>');
-      rows.push('<tr><th class="text" scope="row">Difference</th>' + sign(bits, Math.abs(bits).toFixed(1) + ' bits') + sign(sAct - sTgt, pct(Math.abs(sAct - sTgt))) +
+      rows.push('<tr><th class="text" scope="row">Difference</th>' + decCell(dec) + sign(sAct - sTgt, pct(Math.abs(sAct - sTgt))) +
         (b1 ? sign(1, fmt(b1)) : cell('—')) + (b1 && b2 ? sign(1, fmt(b2)) : cell('—')) + (ranP1 ? sign(1, pct(pAct)) : cell('—')) +
         sign(cAct - sTgt, pct(Math.abs(cAct - sTgt))) + '</tr>');
       scope = 'probabilities measured on ' + S.rangeLabel(row.lo, row.hi);
@@ -434,7 +440,7 @@
         ' of ' + fmt(odd) + (ranP1 ? ', then P-1 removed ' + fmt(row.pm1.factors) + ' of those ' + fmt(row.pm1.runs) : '') +
         '. Target is today’s plan for new ranges: sieve to ' + S.depth(target) + ' and skip P-1, which stopped paying off once the sieve went deep.';
     } else {
-      var tb = Math.log2(target), sp = row.sieve_part;
+      var sp = row.sieve_part;
       var act = ctx.site.active || {};
       scope = n >= act.lo && n < act.hi ? (ctx.site.stages || []).slice(0, 3).map(function (s) { return s.title.replace(/\^(\d+)/g, function (m, e) { return S.sup(e); }); }).join(', then ') : 'not started';
       if (sp && sp.p && sp.p.length && row.odd) {
@@ -452,7 +458,7 @@
       } else {
         rows.push('<tr><th class="text" scope="row">Actual</th>' + cell('—') + cell('0.00 %') + cell('—') + cell('—') + cell('—') + cell('0.00 %') + '</tr>');
         rows.push('<tr class="alt"><th class="text" scope="row">Target</th>' + cell(S.depth(target)) + cell(pct(sTgt)) + cell('—') + cell('—') + cell('—') + cell(pct(sTgt)) + '</tr>');
-        rows.push('<tr><th class="text" scope="row">Difference</th>' + sign(-1, tb.toFixed(1) + ' bits') + sign(-1, pct(sTgt)) + cell('—') + cell('—') + cell('—') + sign(-1, pct(sTgt)) + '</tr>');
+        rows.push('<tr><th class="text" scope="row">Difference</th>' + decCell(-Math.log10(target)) + sign(-1, pct(sTgt)) + cell('—') + cell('—') + cell('—') + sign(-1, pct(sTgt)) + '</tr>');
         var odd7 = 700000;
         note = '* Expected share of odd n removed, from the survivor model (survivors fall like ' + ctx.M.K + ' / ln p). For 700,000 odd n that leaves about ' +
           fmt(Math.round(ctx.M.survivors(odd7, 1e12) / 100) * 100) + ' at 10¹² and ' + fmt(Math.round(ctx.M.survivors(odd7, target) / 100) * 100) + ' at ' + S.depth(target) + '.';

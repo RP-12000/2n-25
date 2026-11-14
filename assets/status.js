@@ -70,21 +70,10 @@
     var c = {
       p: p, sum: sum, site: site, B: B, cols: cols, nmax: B * cols,
       primes: primesDoc.primes.map(function (q) { return q.n; }).sort(function (a, b) { return a - b; }),
-      est: function (col, depth) { return M.survivors(p.odd[col], depth); },
       median: M.median(sum.frontier), actCols: []
     };
-    // the active range and the sieve stages still ahead of it
+    // the columns of the active range
     for (i = 0; i < cols; i++) if (act.hi && i * B >= act.lo && i * B < act.hi) c.actCols.push(i);
-    var actDepth = c.actCols.length && c.actCols.every(function (k) { return p.depth[k]; }) ?
-      Math.min.apply(null, c.actCols.map(function (k) { return p.depth[k]; })) : 0;
-    c.plan = !c.actCols.length ? [] : (site.sieve_plan || []).filter(function (s) { return s.p_to > actDepth && !/^done$/i.test(s.status || ''); })
-      .sort(function (a, b) { return a.p_to - b.p_to; })
-      .map(function (s) {
-        var total = 0;
-        c.actCols.forEach(function (k) { total += c.est(k, s.p_to); });
-        return { depth: s.p_to, total: total, per: total / c.actCols.length, status: String(s.status || '').toLowerCase() };
-      });
-    c.planAhead = !actDepth;
 
     c.cutK = cutDecade(p);
     renderBigScale();
@@ -159,7 +148,7 @@
   }
 
   function drawBig(c) {
-    var p = c.p, B = c.B, cols = c.cols, i, k, v, m;
+    var p = c.p, B = c.B, cols = c.cols, i, v, m;
     var X = function (n) { return G.L + n / c.nmax * (G.R - G.L); };
     var colX = function (col) { return X(col * B); };
     var top = SHOWN;
@@ -187,23 +176,9 @@
     for (v = gStep; v < top; v += gStep) g.push('<line x1="' + G.L + '" y1="' + r1(Y(v)) + '" x2="' + G.R + '" y2="' + r1(Y(v)) + '"></line>');
     o.push('<g class="grid over">' + g.join('') + '</g>');
 
-    // the sieve stages ahead of the active range: dashed lines at the n each should leave
-    var act = c.actCols, firstTodo = p.state.indexOf('t');
-    var ax0 = act.length ? colX(act[0]) : 0, ax1 = act.length ? colX(act[act.length - 1] + 1) : 0;
-    var labelled = c.plan;
-    if (c.plan.length) {
-      var ly = labelled.map(function (s) { return Y(s.per); });
-      for (k = 1; k < ly.length; k++) if (ly[k] < ly[k - 1] + 15) ly[k] = ly[k - 1] + 15;
-      var halo = 'accent halo' + (firstTodo >= 0 ? ' on-band' : '');
-      labelled.forEach(function (s, k2) {
-        var y = r1(Y(s.per));
-        o.push('<line class="plan-line" x1="' + r1(ax0) + '" y1="' + y + '" x2="' + r1(ax1) + '" y2="' + y + '"></line>');
-        late.push('<text class="' + halo + '" x="' + r1(ax1 + 8) + '" y="' + r1(ly[k2] + 4) + '">← p &lt; ' + S.depth(s.depth) + ': ≈ ' +
-          fmt(Math.round(s.total / 100) * 100) + ' left' + (k2 === 0 && c.planAhead ? ' · ' + (s.status === 'running' ? 'running' : 'sieve next') : '') + '</text>');
-      });
-    }
-
     // what the sieve left: PRP-tested composites, n not tested yet, n factored by P-1
+    var act = c.actCols, firstTodo = p.state.indexOf('t');
+    var ax1 = act.length ? colX(act[act.length - 1] + 1) : 0;
     late.push(blockLabels(c, X, Y, colX));
     if (firstTodo >= 0) {
       var todoOdd = 0, restMin = Infinity;
@@ -307,17 +282,17 @@
   }
 
   function ariaText(c) {
-    var p = c.p, depths = p.depth.filter(Boolean), r100 = function (x) { return fmt(Math.round(x / 100) * 100); };
+    var p = c.p, act = c.site.active, depths = [], actDepths = c.actCols.map(function (k) { return p.depth[k]; });
+    for (var k = 0; k < c.cols && (k + 1) * p.bucket <= c.sum.frontier; k++) if (p.depth[k]) depths.push(p.depth[k]);
     var t = 'Every odd n below 10 million in columns of ' + fmt(p.bucket) + ', the lowest ' + fmt(SHOWN) + ' of each column' +
       (c.cutK ? ' (the n above that all have a factor below 10 to the ' + c.cutK + ')' : '') +
       '. At the bottom the n the sieve left: PRP-tested composites, then the n factored by P-1; above them the n the sieve removed, layered by the power of ten of the smallest factor of 2^n − 25. ';
     t += depths.length ? 'Below ' + fmt(c.sum.frontier) + ' the sieve went to p between ' + S.depth(Math.min.apply(null, depths)) + ' and ' +
       S.depth(Math.max.apply(null, depths)) + ', and every n it left is PRP-tested or factored. ' : 'Nothing is sieved yet. ';
-    t += 'Above that, only the factors below 10 million are known. ';
-    if (c.site.active && c.plan.length) {
-      t += 'Next: sieve ' + S.M(c.site.active.lo) + ' to ' + S.M(c.site.active.hi) + ' to p < ' + S.depth(c.plan[0].depth) + ', which should leave about ' + r100(c.plan[0].total) + ' n';
-      t += c.plan.length > 1 ? '; then ' + c.plan.slice(1).map(function (s) { return S.depth(s.depth) + ', about ' + r100(s.total); }).join(', and ') + '. ' : '. ';
+    if (act && actDepths.length && actDepths.every(Boolean)) {
+      t += 'From ' + S.M(act.lo) + ' to ' + S.M(act.hi) + ' the sieve went to p < ' + S.depth(Math.min.apply(null, actDepths)) + ', and the n it left wait for PRP tests. ';
     }
+    t += 'Above that, only the factors below 10 million are known. ';
     return t + c.primes.length + ' known primes, the largest n = ' + fmt(c.primes[c.primes.length - 1]) + '.';
   }
 
@@ -347,7 +322,8 @@
     if (has('open')) keys.push(['st-open', 'Left by the sieve, not tested yet']);
     keys.push(['st-comp', 'PRP-tested composite']);
     var part = c.actCols.some(function (col) { return layersOf(p, col).slice(7).some(Boolean); });
-    if (c.plan.length) keys.push(['plan', (part ? 'No factor known yet, being sieved' : 'Not sieved yet') + ' · dashed: n expected to be left after each stage']);
+    var wash = p.state.split('').some(function (s, col) { return s === 's' && restOf(p, col) > 0; });
+    if (wash) keys.push(['wash', part ? 'No factor known yet, being sieved' : 'Not sieved yet']);
     if (p.state.indexOf('t') >= 0) keys.push(['todo', 'Not started']);
     keys.push(['tick', 'Known prime']);
     document.getElementById('big-legend').innerHTML = keys.map(function (k) {
@@ -371,7 +347,6 @@
       var rest = restOf(p, col);
       if (rest) t.add(fmt(rest), part ? 'no factor known yet' : 'no factor below 10⁷, not sieved', 'sq ' + (st === 's' ? 'plan-wash' : 'todo'));
     }
-    if (c.actCols.indexOf(col) >= 0) c.plan.forEach(function (s) { t.add('≈ ' + fmt(Math.round(c.est(col, s.depth))), 'expected left at p < ' + S.depth(s.depth), 'plan'); });
     var here = c.primes.filter(function (n) { return n >= lo && n < hi; });
     if (here.length) t.add(fmt(here.length), here.length === 1 ? 'prime: n = ' + fmt(here[0]) : 'primes, n = ' + fmt(here[0]) + ' … ' + fmt(here[here.length - 1]), 'tick');
     if (st === 's') t.note(part ? 'Being sieved: the layers from 10⁷ up hold the factors found so far, by their power of ten; the sieve of the smaller p is still running. PRP tests follow, smallest n first.'
