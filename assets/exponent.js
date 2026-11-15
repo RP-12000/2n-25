@@ -15,10 +15,13 @@
   S.onLookup = function (n) { go(n); };
   window.addEventListener('popstate', function () { if (ctx) start(); });
 
-  // without an n in the address: the first n above exponent_start_after (content/site.json) with no known factor
+  // without an n in the address: the smallest n with no known factor and no PRP test (summary.json next_open), the n
+  // the lookup box suggests; without that list, the first n above exponent_start_after (content/site.json) with no known factor
   function start() {
     var n = fromUrl();
     if (n !== null) return show(n, false);
+    var next = ctx.sum.next_open && ctx.sum.next_open[0];
+    if (next) return show(next, false);
     var from = Number(ctx.site.exponent_start_after) || 3600000;
     unfactored(from, 1).then(function (m) { show(m || from + 1, false); });
   }
