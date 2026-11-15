@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Keep the public site up to date by itself: save new uploads, rebuild data/ and push it.
 
-A scheduled task on the PC that holds archive/ runs this every 15 minutes (see "Updating by itself" in
-README.md). Each run:
+A scheduled task on the PC that holds archive/ runs this every 15 minutes, at :00, :15, :30 and :45 (see
+"Updating by itself" in README.md). Each run:
 
   1. saves the uploads that are new on the upload Worker (tools/pull_submissions.py --new-only);
   2. when the archive drive is attached, copies new archive files both ways (tools/sync_archive.py --back);
   3. once a day (UTC), reads the Top PRP ranks of the known primes from PRP Records into
      archive/prptop.json (tools/prptop_ranks.py); after a failed read it tries again a few hours later;
-     once an hour, reads the progress of the Prime95 PRP run on this PC into live/prp_progress.json
+     once an hour, in the first run of the hour (on the hour), reads the progress of the Prime95 PRP run
+     on this PC into live/prp_progress.json
      (tools/live_prp.py: it only reads Prime95's results.json.txt and copies nothing to the archive drive);
   4. stops here if nothing that tools/build.py reads has changed since the last published build;
   5. rebuilds data/ (tools/build.py);
@@ -52,7 +53,6 @@ LOCK = os.path.join(REPO, "auto_update.lock")
 LOCK_STALE_S = 2 * 3600          # a lock older than this was left by a run that died
 RANKS_RETRY_S = 3 * 3600         # after a failed read of the PRPTop ranks, wait this long before the next
 LIVE = os.path.join(REPO, "live")  # the progress of the Prime95 run on this PC (tools/live_prp.py), not committed
-LIVE_EVERY_S = 3600              # read it once an hour
 LOG_MAX_BYTES = 1_000_000
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0   # CREATE_NO_WINDOW: no console flashing under pyw
 MARK = "Made by tools/auto_update.py"                 # last line of every commit this script makes
@@ -522,14 +522,15 @@ def refresh_ranks(log, state):
 
 
 def refresh_live(log, state):
-    """Once an hour, the progress of the Prime95 run on this PC (tools/live_prp.py only reads its results file).
-    Returns how many results were new."""
-    if time.time() - state.get("live_try", 0) < LIVE_EVERY_S:
+    """Once an hour, in the first run of each hour (the runs are at :00, :15, :30 and :45), the progress of the
+    Prime95 run on this PC (tools/live_prp.py only reads its results file). Returns how many results were new."""
+    hour = time.strftime("%Y-%m-%d %H", time.gmtime())   # a whole hour in UTC is a whole hour on this PC too
+    if state.get("live_hour") == hour:
         return 0
-    state["live_try"] = time.time()
+    state["live_hour"] = hour
     code, out = tool("live_prp.py", timeout=300)
     if code:
-        log.once("live_problem", "live_prp.py could not read the Prime95 results; will try again in an hour:\n" + tail(out, 4))
+        log.once("live_problem", "live_prp.py could not read the Prime95 results; will try again next hour:\n" + tail(out, 4))
         return 0
     log.clear("live_problem")
     line = (out.strip().splitlines() or [""])[-1]
