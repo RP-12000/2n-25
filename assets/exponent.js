@@ -67,44 +67,108 @@
     if (n >= 1e7) return paint(my, n, { kind: 'out' });
     if (n < 5) return paint(my, n, { kind: 'neg' });
     if (n % 2 === 0) return paint(my, n, { kind: 'even' });
-    S.shard(n, ctx.sum.shards).then(function (shard) {
+    Promise.all([S.shard(n, ctx.sum.shards), S.factorFile(n, ctx.sum.factor_files)]).then(function (got) {
       if (my !== token) return;
-      var row = rowOf(n);
-      var info = { shard: shard, row: row };
+      var shard = got[0], row = rowOf(n);
+      var info = { shard: shard, row: row, ff: got[1] };
       var pm1 = shard && shard.pm1[n] ? shard.pm1[n] : [];
       var prp = shard && shard.prp[n] ? shard.prp[n] : [];
       info.pm1 = pm1; info.prp = prp;
       var survivors = shard ? new Set(shard.s) : null;
       info.survivors = survivors;
+      // a range sieved twice: the first sieve (the one P-1 and the PRP tests ran after), and whether n survived it
+      info.before = row && row.sieved && row.sieve_before ? row.sieve_before : null;
+      info.oldSurvivor = !!(info.before && shard && shard.s0 && shard.s0.indexOf(n) >= 0);
+      // the sieve (the second one, in a range sieved twice) found a factor of n
+      var struck = !!(row && row.sieved && !(survivors && survivors.has(n)));
+      var limit = Math.min(TRIAL, row && row.sieve && row.sieve.depth ? row.sieve.depth : TRIAL);
       var fac = pm1.filter(function (r) { return r[3]; });
       if (ctx.primeInfo[n]) info.kind = 'prime';
       else if (fac.length) {
         info.kind = 'p1'; info.factorRec = fac[0];
-        info.parts = shard && shard.pm1f && shard.pm1f[n] ? shard.pm1f[n] : null;   // P-1 reported their product
-      }
-      else if (prp.length) info.kind = prp.some(function (r) { return r[1] === 'P'; }) ? 'prime' : prp.some(function (r) { return r[1] === 'R'; }) ? 'reported' : 'comp';
-      else if (row && row.sieved) {
-        if (survivors && survivors.has(n)) info.kind = 'untested';
-        else if (shard && shard.sf && shard.sf[n]) {
-          // Mass Prime Siever keeps the factor it found; build.py checked that it divides 2^n - 25
-          info.sp = shard.sf[n];
-          info.kind = 'sieve';
-        } else {
-          var depth = row.sieve && row.sieve.depth ? row.sieve.depth : TRIAL;
-          info.sp = S.smallestFactor(n, Math.min(TRIAL, depth));
-          info.kind = info.sp ? 'sieve' : 'sieve-big';
+        info.p1 = p1List(n, shard, pm1);
+        // P-1 runs on sieve survivors; should the sieve have removed n as well, its factors belong here too
+        if (struck) {
+          var p1Seen = {};
+          info.p1.forEach(function (x) { (x.parts || [x.F]).forEach(function (q) { p1Seen[String(q)] = true; }); });
+          info.factors = sieveFactors(n, info.ff, shard, limit).filter(function (f) { return !p1Seen[f.p]; });
         }
-      } else {
-        info.sp = S.smallestFactor(n, TRIAL);
-        // a sieve slice above the small primes (the sieve from p = 2 still running) may have found a factor already
-        info.sf = shard && shard.sf && shard.sf[n] ? shard.sf[n] : null;
-        var act = ctx.site.active || {};
-        info.kind = info.sp ? 'future' : info.sf ? 'sieve-part' : (n >= act.lo && n < act.hi ? 'queued' : 'todo');
       }
+      else if (prp.some(function (r) { return r[1] === 'P'; })) info.kind = 'prime';
+      else if (prp.some(function (r) { return r[1] === 'R'; })) info.kind = 'reported';
+      else if (struck) {
+        // removed by the sieve; or, in a range sieved twice, a PRP composite the second sieve found a factor for
+        info.factors = sieveFactors(n, info.ff, shard, limit);
+        info.kind = info.factors.length ? 'sieve' : 'sieve-big';
+      }
+      else if (prp.length) info.kind = 'comp';
+      else if (row && row.sieved) info.kind = 'untested';
+      else {
+        // not sieved from the small primes yet: trial division here, and whatever the sieve slices so far found
+        info.factors = sieveFactors(n, info.ff, shard, TRIAL);
+        var act = ctx.site.active || {};
+        info.kind = info.factors.some(function (f) { return f.small; }) ? 'future' : info.factors.length ? 'sieve-part'
+          : (n >= act.lo && n < act.hi ? 'queued' : 'todo');
+      }
+      // in a range sieved twice, the factors of n the first sieve kept: a factor it did not keep counts as not found
+      // by it, so an n it struck out without keeping a factor goes to the second sieve
+      info.firstKept = info.before && !info.oldSurvivor ? (info.factors || []).filter(function (f) { return f.src && f.src.before; }) : [];
+      // when the sieve first struck n out: the first sieve of a range sieved twice if it kept a factor of n,
+      // else the earliest run that found one of its factors
+      info.struck = info.firstKept.length && /^sieve/.test(info.kind) ? info.before.end
+        : (info.factors || []).reduce(function (t, f) { return f.src && f.src.end && (!t || f.src.end < t) ? f.src.end : t; }, null);
       paint(my, n, info);
       if (scroll) window.scrollTo(0, 0);
     });
   }
+
+  /* Every known sieve factor of 2^n - 25, smallest first: the primes up to `limit` found here by trial division
+     (they are no news to any sieve, so data/ leaves them out) and every larger one in the sieve output
+     (data/f/<x.x>.json), each with the slice that found it: {p: string, src: slice or null, small: bool}. */
+  function sieveFactors(n, ff, shard, limit) {
+    var slices = ff && ff.slices ? ff.slices : [];
+    var out = S.factorsBelow(n, limit).map(function (p) {
+      var src = null;
+      for (var i = 0; i < slices.length && !src; i++) {
+        var x = slices[i];
+        if (x.n[0] <= n && n < x.n[1] && x.p[0] <= p && p < x.p[1]) src = x;
+      }
+      return { p: String(p), src: src, small: true };
+    });
+    slices.forEach(function (x) {
+      ((x.f || {})[n] || []).forEach(function (p) { out.push({ p: String(p), src: x, small: false }); });
+    });
+    if (!slices.length && shard && shard.sf && shard.sf[n]) {
+      // data from before the factor files: one factor above 10^7, with the uploader's name if it came from an upload
+      var u = shard.sfu && shard.sfu[n] !== undefined ? shard.users[shard.sfu[n]] : null;
+      out.push({ p: String(shard.sf[n]), src: null, small: false, by: u });
+    }
+    out.sort(function (a, b) { return a.p.length - b.p.length || (a.p < b.p ? -1 : a.p > b.p ? 1 : 0); });
+    return out.filter(function (f, i) { return !i || f.p !== out[i - 1].p; });
+  }
+  /* Every P-1 factor of n once, in the order found: {F: as reported, parts: its primes when P-1 found several in
+     the same run and reported their product, rec: the run}. A result line may report several, comma-separated. */
+  function p1List(n, shard, pm1) {
+    var pf = shard && shard.pm1f ? shard.pm1f[n] : null, seen = {}, out = [];
+    pm1.forEach(function (r) {
+      if (!r[3]) return;
+      String(r[3]).split(',').forEach(function (F) {
+        if (!F || seen[F]) return;
+        seen[F] = true;
+        // data from before every factor was kept: the primes of the first factor, as a list
+        var parts = pf ? (Array.isArray(pf) ? (out.length ? null : pf) : pf[F] || null) : null;
+        out.push({ F: F, parts: parts, rec: r });
+      });
+    });
+    return out;
+  }
+  function p1Primes(list) { return list.reduce(function (k, x) { return k + (x.parts ? x.parts.length : 1); }, 0); }
+  // whether a sieve slice found a factor above 10^7 for m
+  function hasBig(ff, shard, m) {
+    if (ff && ff.slices) return ff.slices.some(function (x) { return !!(x.f && x.f[m]); });
+    return !!(shard && shard.sf && shard.sf[m]);
+  }
+  function countText(k) { return k === 1 ? '1 known factor' : fmt(k) + ' known factors'; }
 
   /* "p from 10¹³ to 2.4×10¹³": the p ranges a row not sieved from p = 2 yet has been sieved for */
   function partText(row) {
@@ -144,14 +208,26 @@
     var pIdx = ctx.primes.indexOf(n), pInfo = ctx.primeInfo[n] || {};
     var depth = row && row.sieve ? row.sieve.depth : null;
     var stage0 = (site.stages && site.stages[0]) || { title: 'the sieve', where: '' };
+    var nFac = (info.factors || []).length, nP1 = info.p1 ? p1Primes(info.p1) : 0;
+    var hasText = function (k) { return k > 1 ? 'Has ' + fmt(k) + ' known factors.' : 'Has a known factor.'; };
+    // in a range sieved twice: what the second sieve added to the P-1 factors, or to a PRP test that found no factor
+    var again = info.before && nFac ? 'The second sieve, to ' + S.depth(depth) + ', found ' + (nFac === 1 ? 'one more' : fmt(nFac) + ' more') +
+      (info.struck ? ' on ' + S.when(info.struck) : '') + '.' : '';
+    var later = info.before && info.oldSurvivor ? 'It survived the first sieve, to ' + S.depth(info.before.depth) +
+      ((info.prp || []).length ? ', and a PRP test showed 2ⁿ − 25 composite' : '') + '. The second sieve, to ' + S.depth(depth) + ', found ' +
+      (nFac > 1 ? 'its factors' : 'its factor') + (info.struck ? ' on ' + S.when(info.struck) : '') + '.' : '';
+    // struck out by the first sieve, which kept none of its factors: the second sieve found them
+    var fresh = info.before && !info.oldSurvivor && nFac && !(info.firstKept || []).length ? 'The sieve to ' + S.depth(depth) + ' found ' +
+      (nFac > 1 ? 'its factors' : 'its factor') + (info.struck ? ' on ' + S.when(info.struck) : '') + '.' : '';
     var V = {
       comp: ['Is composite.', 'The PRP-3 residue is not 1, so 2ⁿ − 25 is not prime. No factor is known.', 'good'],
-      p1: ['Has a known factor.', 'P-1 found a factor, so no PRP test was needed.', 'good'],
-      sieve: ['Has a known factor.', 'The sieve struck it out' + (row && row.sieve && row.sieve.end ? ' on ' + S.day(row.sieve.end) : '') + ', before any P-1 or PRP work.', 'good'],
+      p1: [hasText(nP1 + nFac), 'P-1 found a factor, so no PRP test was needed.' + (again ? ' ' + again : ''), 'good'],
+      sieve: [hasText(nFac), later || fresh ||
+        'The sieve struck it out' + (info.struck || (row && row.sieve && row.sieve.end) ? ' on ' + S.when(info.struck || row.sieve.end) : '') + ', before any P-1 or PRP work.', 'good'],
       'sieve-big': ['Has a known factor.', 'The sieve to ' + S.depth(depth) + ' struck it out; its factor lies between 10⁷ and ' + S.depth(depth) + ' and is not stored.', 'good'],
       future: ['Has a small factor.', 'Trial division on this page finds it; the first sieve pass will remove this n.', 'good'],
       'sieve-part': ['Has a known factor.', 'The sieve found it while sieving ' + partText(row) + '. The sieve of the smaller p is still running.', 'good'],
-      prime: ['Is a probable prime!', 'Prime ' + (pIdx + 1) + ' of the ' + ctx.primes.length + ' known, in order of n.' + (pInfo.rank ? ' Top PRP ' + pInfo.rank + ' in the list of ' + ctx.rankDate + '.' : ''), 'prime'],
+      prime: ['Is a probable prime!', 'Prime ' + (pIdx + 1) + ' of the ' + ctx.primes.length + ' known, in order of n.' + (pInfo.rank ? ' Top PRP ' + pInfo.rank + ' in PRP Records as of ' + ctx.rankDate + '.' : ''), 'prime'],
       reported: ['Reported as a probable prime.', 'A PRP-3 test sent to the project says 2ⁿ − 25 is a probable prime. The project re-tests it before counting it as a known prime.', 'prime'],
       untested: ['Waiting for a PRP test.', 'It survived the sieve to ' + S.depth(depth) + (info.pm1 && info.pm1.length ? ' and P-1' : '') + '. A PRP test will decide it.', 'accent'],
       queued: ['Waiting for the sieve.', 'No prime below 10⁷ divides it. ' + S.supHTML(esc(stage0.title)) + ' comes first; if it survives, a PRP test follows, smallest n first.', 'accent'],
@@ -174,7 +250,7 @@
     paintEffort(n, info, row);
     paintFactors(n, info, row);
     paintHistory(n, info, row, pInfo, tiny);
-    paintProps(n, valid, row, rangeLabel);
+    paintProps(n, valid, row);
     paintStrip(n, info, row);
   }
 
@@ -272,11 +348,10 @@
         }
         // not sieved from the small primes yet: trial division here, and the factors of any sieve slice
         var blockLo = Math.floor(m / 100000) * 100000;
-        return S.shard(m, ctx.sum.shards).then(function (shard) {
-          var sf = shard && shard.sf;
+        return Promise.all([S.shard(m, ctx.sum.shards), S.factorFile(m, ctx.sum.factor_files)]).then(function (got) {
           while (m >= Math.max(5, blockLo) && m < Math.min(1e7, blockLo + 100000)) {
             if (++tries > 2000) return null;
-            if (!ctx.primeInfo[m] && !(sf && sf[m]) && !S.smallestFactor(m, TRIAL)) return m;
+            if (!ctx.primeInfo[m] && !hasBig(got[1], got[0], m) && !S.smallestFactor(m, TRIAL)) return m;
             m += 2 * dir;
           }
           return walk();
@@ -300,44 +375,53 @@
       return x > 0 ? 'chance it is prime: about 1 in ' + fmt(Math.round(1 / x / 100) * 100 || 1) : '';
     };
     var notNeeded = [['PRP-3', '—', state('Not needed', 'good')], ['Proof', '—', '—']];
+    // the PRP tests n had, with whether the residues match, and its proof file
+    var prpTests = function () {
+      var seen = {}, out = [];
+      info.prp.forEach(function (x, i) {
+        var match = x[2] && seen[x[2]];
+        out.push(['PRP-3' + (info.prp.length > 1 ? ' #' + (i + 1) : ''), x[2] || '—', state(match ? 'Matches, verified' : 'Composite', match ? 'good' : '')]);
+        if (x[2]) seen[x[2]] = true;
+      });
+      var withProof = info.prp.filter(function (x) { return x[4]; })[0];
+      out.push(['Proof', withProof ? 'power ' + withProof[4] + (withProof[5] ? ' · md5 ' + esc(withProof[5]) + '…' : '') : '—',
+        withProof ? state('Kept · not certified yet', 'muted') : '—']);
+      return out;
+    };
     if (kind === 'comp') {
       var r = info.prp[info.prp.length - 1];
       band = ['good', 'composite · 0 primality tests remaining'];
       line = 'PRP-3 result ' + esc(r[0]) + ' UTC · ' + esc(user(shard, r, 7)) + ' · ' + esc(program(shard, r, 6));
-      var seen = {};
-      info.prp.forEach(function (x, i) {
-        var match = x[2] && seen[x[2]];
-        tests.push(['PRP-3' + (info.prp.length > 1 ? ' #' + (i + 1) : ''), x[2] || '—', state(match ? 'Matches, verified' : 'Composite', match ? 'good' : '')]);
-        if (x[2]) seen[x[2]] = true;
-      });
-      var withProof = info.prp.filter(function (x) { return x[4]; })[0];
-      tests.push(['Proof', withProof ? 'power ' + withProof[4] + (withProof[5] ? ' · md5 ' + esc(withProof[5]) + '…' : '') : '—',
-        withProof ? state('Kept · not certified yet', 'muted') : '—']);
+      tests = prpTests();
       banner = ['', 'No factor known'];
     } else if (kind === 'p1') {
       var f = info.factorRec;
       band = ['good', 'factored · 0 primality tests remaining'];
       line = 'P-1 factor ' + esc(f[0]) + ' UTC · ' + esc(user(shard, f, 5)) + ' · ' + esc(program(shard, f, 4));
       tests = notNeeded;
-      banner = ['', (info.parts ? info.parts.length + ' known factors' : '1 known factor') + ' · cofactor not tested'];
+      banner = ['', countText(p1Primes(info.p1) + (info.factors || []).length) + ' · cofactor not tested'];
     } else if (kind === 'sieve' || kind === 'sieve-big') {
       band = ['good', 'factored · 0 primality tests remaining'];
-      line = 'Removed by the sieve' + (row.sieve.end ? ' ' + S.day(row.sieve.end) : '') + (row.sieve.program ? ' · ' + esc(S.prog(row.sieve.program)) : '');
-      tests = notNeeded;
-      banner = ['', kind === 'sieve' ? '1 known factor · cofactor not tested' : 'Factor between 10⁷ and ' + S.depth(depth) + ' · not stored'];
+      // in a range sieved twice: the first sieve removed n and kept a factor, or the second sieve found the first one kept
+      var first = info.before && (info.firstKept || []).length;
+      var by = first ? info.before.program : row.sieve.program;
+      line = (info.oldSurvivor ? 'Factor found by the second sieve' : info.before && !first ? 'Factor found by the sieve' : 'Removed by the sieve') +
+        (info.struck || row.sieve.end ? ' ' + S.when(info.struck || row.sieve.end) : '') + (by ? ' · ' + esc(S.prog(by)) : '');
+      tests = (info.prp || []).length ? prpTests() : notNeeded;
+      banner = ['', kind === 'sieve' ? countText(info.factors.length) + ' · cofactor not tested' : 'Factor between 10⁷ and ' + S.depth(depth) + ' · not stored'];
     } else if (kind === 'sieve-part') {
       band = ['good', 'factored · 0 primality tests remaining'];
       var sp = row.sieve_part || {};
-      line = 'Removed by the sieve' + (sp.end ? ' ' + S.day(sp.end) : '') + ' · ' + partText(row);
+      line = 'Removed by the sieve' + (info.struck || sp.end ? ' ' + S.when(info.struck || sp.end) : '') + ' · ' + partText(row);
       tests = notNeeded;
-      banner = ['', '1 known factor · cofactor not tested'];
+      banner = ['', countText(info.factors.length) + ' · cofactor not tested'];
     } else if (kind === 'future') {
       band = ['accent', 'will be removed by the sieve · no test needed'];
       var act = site.active || {};
       line = n >= act.lo && n < act.hi ? 'Queued: ' + S.supHTML(esc(stage0.title)) + (stage0.where ? ' · ' + S.supHTML(esc(stage0.where)) : '') : 'Not assigned yet; the first sieve pass will remove it';
       lineCls = 'accent';
       tests = notNeeded;
-      banner = ['', '1 known factor · cofactor not tested'];
+      banner = ['', countText(info.factors.length) + ' · cofactor not tested'];
     } else if (kind === 'prime') {
       band = ['prime', (tiny ? 'prime' : 'probable prime') + ' · 0 primality tests remaining'];
       var digitsBig = S.digits(n) > 40000;
@@ -353,7 +437,7 @@
           pInfo.proof_power ? ['Proof', 'power ' + pInfo.proof_power, state('Kept · not certified yet', 'muted')] : ['Proof', '—', '—']];
       }
       var k = ctx.primes.indexOf(n) + 1;
-      banner = ['prime', pInfo.rank ? 'Top PRP ' + esc(pInfo.rank) + ' (list of ' + esc(ctx.rankDate) + ') · prime ' + k + ' of ' + ctx.primes.length
+      banner = ['prime', pInfo.rank ? 'Top PRP ' + esc(pInfo.rank) + ' (PRP Records, ' + esc(ctx.rankDate) + ') · prime ' + k + ' of ' + ctx.primes.length
         : 'Prime ' + k + ' of ' + ctx.primes.length + (tiny ? '' : ' · ' + (digitsBig ? 'too large for a primality proof' : 'small enough for an ECPP proof'))];
     } else if (kind === 'reported') {
       // a probable prime from an upload, listed as a known prime only after the project re-tests it
@@ -404,11 +488,15 @@
     var show = row && ['comp', 'p1', 'sieve', 'sieve-big', 'sieve-part', 'untested', 'future', 'queued', 'todo'].indexOf(kind) >= 0 && n > 13;
     card.hidden = !show;
     if (!show) return;
-    var target = ctx.site.sieve_target || 1e14;
+    var tg = S.sieveTarget(ctx.site, n), target = tg.target;
+    var plan = tg.note ? tg.note : 'Target is today’s plan for new ranges: sieve to ' + S.depth(target) + ' and skip P-1, which stopped paying off once the sieve went deep.';
     var K = row.survivor_K || ctx.M.K;
     var sTgt = 1 - K / Math.log(target);
     var pct = function (x) { return (x * 100).toFixed(2) + ' %'; };
-    var sign = function (x, s) { return '<td class="r ' + (x >= 0 ? 'pos' : 'neg') + '">' + (x >= 0 ? '+' : '−') + s + '</td>'; };
+    var sign = function (x, s) {
+      x = Math.round(x * 1e6) / 1e6;     // a difference of 0 that rounding made −0.000001 is still 0
+      return '<td class="r ' + (x >= 0 ? 'pos' : 'neg') + '">' + (x >= 0 ? '+' : '−') + s + '</td>';
+    };
     // a limit against the target in powers of ten: 3.5×10¹³ against 10¹⁴ is −0.46
     var decCell = function (d) {
       var r = Math.round(d * 100) / 100;
@@ -419,11 +507,13 @@
     var rows = [];
     var scope, note;
     if (row.sieved) {
-      var surv = row.survivors || 0, odd = row.odd;
+      var surv = row.survivors || 0, odd = row.odd, before = row.sieve_before;
       var sAct = 1 - surv / odd;
-      var ranP1 = row.pm1.runs > 0 && kind !== 'sieve' && kind !== 'sieve-big';
-      var pAct = ranP1 ? row.pm1.factors / row.pm1.runs : 0;
-      var cAct = ranP1 ? 1 - (surv - row.pm1.factors) / odd : sAct;
+      // sieved twice: P-1 ran after the first sieve; on top of the second it adds the n it factored that this one left
+      var p1Left = before ? (row.pm1.after_sieve || 0) : row.pm1.factors;
+      var ranP1 = row.pm1.runs > 0 && (!/^sieve/.test(kind) || !!(info.pm1 && info.pm1.length));
+      var pAct = ranP1 ? (before ? (surv ? p1Left / surv : 0) : row.pm1.factors / row.pm1.runs) : 0;
+      var cAct = ranP1 ? 1 - (surv - p1Left) / odd : sAct;
       var own = info.pm1 && info.pm1[0];
       var b1 = own ? own[1] : (ranP1 ? row.pm1.b1 : 0);
       var b2 = own ? own[2] : (ranP1 ? row.pm1.b2_median : 0);
@@ -436,9 +526,12 @@
         (b1 ? sign(1, fmt(b1)) : cell('—')) + (b1 && b2 ? sign(1, fmt(b2)) : cell('—')) + (ranP1 ? sign(1, pct(pAct)) : cell('—')) +
         sign(cAct - sTgt, pct(Math.abs(cAct - sTgt))) + '</tr>');
       scope = 'probabilities measured on ' + S.rangeLabel(row.lo, row.hi);
-      note = '* Share of odd n in ' + S.rangeLabel(row.lo, row.hi) + ' removed by that much work: the sieve to ' + S.depth(row.sieve.depth) + ' left ' + fmt(surv) +
-        ' of ' + fmt(odd) + (ranP1 ? ', then P-1 removed ' + fmt(row.pm1.factors) + ' of those ' + fmt(row.pm1.runs) : '') +
-        '. Target is today’s plan for new ranges: sieve to ' + S.depth(target) + ' and skip P-1, which stopped paying off once the sieve went deep.';
+      note = before
+        ? '* Share of odd n in ' + S.rangeLabel(row.lo, row.hi) + ' removed by that much work. The first sieve, to ' + S.depth(before.depth) + ', left ' +
+          fmt(before.survivors) + ' of ' + fmt(odd) + (row.pm1.runs ? '; P-1 and the PRP tests ran on those' : '; the PRP tests ran on those') +
+          '. The second sieve, to ' + S.depth(row.sieve.depth) + ', left ' + fmt(surv) + (ranP1 ? ', and P-1 had found a factor for ' + fmt(p1Left) + ' of them' : '') + '. ' + plan
+        : '* Share of odd n in ' + S.rangeLabel(row.lo, row.hi) + ' removed by that much work: the sieve to ' + S.depth(row.sieve.depth) + ' left ' + fmt(surv) +
+          ' of ' + fmt(odd) + (ranP1 ? ', then P-1 removed ' + fmt(row.pm1.factors) + ' of those ' + fmt(row.pm1.runs) : '') + '. ' + plan;
     } else {
       var sp = row.sieve_part;
       var act = ctx.site.active || {};
@@ -454,7 +547,7 @@
           sign(share - sTgt, pct(Math.abs(share - sTgt))) + '</tr>');
         note = '* Share of odd n in ' + S.rangeLabel(row.lo, row.hi) + ' removed by that much work. So far the sieve has covered ' + partText(row).replace(/<[^>]+>/g, '') +
           ' only, and found a factor for ' + fmt(sp.factored) + ' of the ' + fmt(row.odd) + ' odd n (the survivor model expects ' + pct(expect) +
-          '). The sieve of the smaller p is still running. Target is today’s plan for new ranges: sieve to ' + S.depth(target) + ' and skip P-1.';
+          '). The sieve of the smaller p is still running. ' + plan;
       } else {
         rows.push('<tr><th class="text" scope="row">Actual</th>' + cell('—') + cell('0.00 %') + cell('—') + cell('—') + cell('—') + cell('0.00 %') + '</tr>');
         rows.push('<tr class="alt"><th class="text" scope="row">Target</th>' + cell(S.depth(target)) + cell(pct(sTgt)) + cell('—') + cell('—') + cell('—') + cell(pct(sTgt)) + '</tr>');
@@ -474,40 +567,24 @@
   // a long number with a line break allowed after each comma (copies without extra characters)
   function wrapBig(v) { return S.fmtBig(v).replace(/,/g, ',<wbr>'); }
 
-  function countClass(c, m) {
-    var lo = 5, hi = 1e7;
-    return Math.floor((hi - 1 - c) / m) - Math.floor((lo - 1 - c) / m);
-  }
   function powText(fs) {
     return fs.map(function (x) { return S.fmtBig(x[0]) + (x[1] > 1 ? S.sup(x[1]) : ''); }).join(' × ');
   }
 
-  function factorRow(n, pStr, date, how, who, bound) {
+  function factorRow(pStr, date, how, who, bound) {
     var p = BigInt(pStr);
     var bits = (pStr.length > 15 ? Math.log2(Number(pStr.slice(0, 15))) + (pStr.length - 15) * Math.log2(10) : Math.log2(Number(pStr))).toFixed(3);
-    var row = { p: S.fmtBig(pStr), digits: pStr.length, bits: bits, date: date, how: how, who: who, pm1: '—', ord: '—', b1: '—', b2: '—', rel: '' };
+    var row = { p: S.fmtBig(pStr), digits: pStr.length, bits: bits, date: date, how: how, who: who, pm1: '—', b1: '—', b2: '—' };
     if (!S.isProbablePrime(p)) {
       row.pm1 = 'composite factor';
-      row.rel = S.fmtBig(pStr) + ' is itself composite: P-1 found two or more prime factors at once.';
       return row;
     }
     var fz = S.factorize(p - BigInt(1), bound);
     row.pm1 = powText(fz.factors) + (fz.rest ? ' × (' + S.fmtBig(fz.rest) + ')' : '');
     if (fz.rest) return row;
-    var o = S.order2(p, fz.factors);
-    row.ord = wrapBig(o);
     var mb = S.minB(fz.factors);
     row.b1 = S.fmtBig(mb[0]);
     row.b2 = mb[1] ? S.fmtBig(mb[1]) : '—';
-    var r = BigInt(n) % o;
-    if (o < BigInt(1e7)) {
-      var on = Number(o), rn = Number(r);
-      var cnt = on % 2 === 0 ? countClass(rn, on) : countClass(rn % 2 ? rn : rn + on, 2 * on);
-      row.rel = S.fmtBig(pStr) + ' divides 2ⁿ − 25 exactly when n ≡ ' + fmt(rn) + ' (mod ' + fmt(on) + ')' +
-        (cnt > 1 ? ': one sieve step strikes out all ' + fmt(cnt) + ' such odd n below 10⁷.' : ', so this is the only odd n below 10⁷ it divides.');
-    } else {
-      row.rel = S.fmtBig(pStr) + ' divides 2ⁿ − 25 exactly when n ≡ ' + S.fmtBig(r) + ' (mod ' + S.fmtBig(o) + '), so this is the only n below 10⁷ it divides.';
-    }
     return row;
   }
 
@@ -515,40 +592,52 @@
     var kind = info.kind, out = [], sum = '', text = '';
     var bitsOf = function (s) { return s.length > 15 ? Math.log2(Number(s.slice(0, 15))) + (s.length - 15) * Math.log2(10) : Math.log2(Number(s)); };
     if (kind === 'p1') {
-      var f = info.factorRec, bound = Math.max(1000, Math.min(f[1] || 1e6, 2e6)), F = String(f[3]);
-      var day = S.day(f[0]), how = 'P-1, stage ' + (f[2] ? 2 : 1), who = user(info.shard, f, 5);
-      if (info.parts) {
-        // P-1 reported the product of primes it found in the same run: show that number, then its primes
-        var k = info.parts.length;
-        out.push({ p: wrapBig(F), digits: F.length, bits: bitsOf(F).toFixed(3), date: day, how: how, who: who,
-          pm1: 'composite: the product of the ' + k + ' primes below', ord: '—', b1: '—', b2: '—', rel: '', cls: 'group' });
-        info.parts.forEach(function (q, i) {
-          var r = factorRow(n, String(q), '', '', '', bound);
-          r.p = (i ? '× ' : '= ') + r.p;
-          r.cls = 'sub';
-          out.push(r);
-        });
-        out[0].rel = 'P-1 found ' + (k === 2 ? 'two' : k === 3 ? 'three' : k === 4 ? 'four' : fmt(k)) + ' prime factors in the same run and reported their product, the ' +
-          F.length + '-digit number in the first row.';
-        sum = k + ' prime factors, found together · ' + bitsOf(F).toFixed(1) + ' of ' + fmt(n) + ' bits known';
-      } else {
-        out.push(factorRow(n, F, day, how, who, bound));
-        sum = '1 factor · ' + bitsOf(F).toFixed(1) + ' of ' + fmt(n) + ' bits known';
-      }
-    } else if ((kind === 'sieve' || kind === 'future' || kind === 'sieve-part') && (info.sp || info.sf)) {
-      var sfu = info.shard && info.shard.sfu, finder = sfu && sfu[n] !== undefined && info.shard.users[sfu[n]], known = 0;
-      if (info.sp) {
-        out.push(factorRow(n, String(info.sp), kind === 'sieve' && row.sieve && row.sieve.end ? S.day(row.sieve.end) : '—', kind === 'sieve' ? (finder ? 'Sieve, uploaded' : 'Sieve') : 'Trial division (this page)',
-          kind === 'sieve' ? finder || (info.sp >= 1e7 ? ctx.site.credit : '—') : '—', 4000));
-        known += Math.log2(info.sp);
-      }
-      if (info.sf && String(info.sf) !== String(info.sp)) {
-        // found by a sieve slice above the small primes, before the sieve from p = 2 reached this n
-        var part = row.sieve_part || {};
-        out.push(factorRow(n, String(info.sf), part.end ? S.day(part.end) : '—', finder ? 'Sieve, uploaded' : 'Sieve', finder || ctx.site.credit, 4000));
-        known += bitsOf(String(info.sf));
-      }
+      var bitsKnown = 0, primes = p1Primes(info.p1);
+      info.p1.forEach(function (x) {
+        var f = x.rec, bound = Math.max(1000, Math.min(f[1] || 1e6, 2e6));
+        var day = S.when(f[0]), who = user(info.shard, f, 5);
+        bitsKnown += bitsOf(x.F);
+        // when P-1 reported the product of several primes found in the same run, each prime gets its own row
+        (x.parts || [x.F]).forEach(function (q) { out.push(factorRow(String(q), day, 'P-1', who, bound)); });
+      });
+      (info.factors || []).forEach(function (f) {
+        var x = f.src;
+        out.push(factorRow(f.p, S.when(x && x.end ? x.end : row.sieve && row.sieve.end), 'TF',
+          f.small ? '—' : x && info.ff ? info.ff.users[x.by] || ctx.site.credit : f.by || ctx.site.credit, 4000));
+        bitsKnown += bitsOf(f.p);
+        primes += 1;
+      });
+      sum = (primes === 1 ? '1 factor' : primes + ' prime factors' + (info.p1.length === 1 && !(info.factors || []).length ? ', found together' : '')) + ' · ' +
+        bitsKnown.toFixed(1) + ' of ' + fmt(n) + ' bits known';
+    } else if ((kind === 'sieve' || kind === 'future' || kind === 'sieve-part') && info.factors && info.factors.length) {
+      // every factor the sieve found, each with the run that found it; those below 10^7 carry no name
+      var known = 0, users = info.ff && info.ff.users ? info.ff.users : [];
+      info.factors.forEach(function (f) {
+        var x = f.src, who, date;
+        if (x) {
+          who = f.small ? '—' : users[x.by] || ctx.site.credit;
+          date = S.when(x.end);
+        } else if (kind === 'sieve') {
+          // a range sieved before the factor files (or by the older sievers): the row's sieve
+          who = f.small ? '—' : f.by || ctx.site.credit;
+          date = S.when(row.sieve && row.sieve.end);
+        } else if (f.small) {
+          who = '—'; date = '—';             // trial division on this page
+        } else {
+          var part = row.sieve_part || {};
+          who = f.by || ctx.site.credit; date = S.when(part.end);
+        }
+        out.push(factorRow(f.p, date, 'TF', who, 4000));
+        known += bitsOf(f.p);
+      });
       sum = out.length + (out.length === 1 ? ' factor · ' : ' factors · ') + known.toFixed(1) + ' of ' + fmt(n) + ' bits known';
+      var limit = row && row.sieved && row.sieve ? row.sieve.depth : null;
+      text = info.ff && info.ff.slices && info.ff.slices.length
+        ? (row && row.sieved ? 'Every prime factor below the sieve limit, ' + S.depth(limit) + ', is listed: the sieve output keeps them all, and this page finds the ones below 10⁷ itself.'
+          : 'The factors below 10⁷ come from trial division on this page, the rest from the sieve slices run so far (' + partText(row) + ').')
+        : (row && row.sieved ? 'The factors below 10⁷ come from trial division on this page. The sieve that removed this n' +
+          (row.sieve && row.sieve.program ? ' (' + S.prog(row.sieve.program) + ')' : '') + ' kept only its survivors, so a factor between 10⁷ and ' + S.depth(limit) + ' would not be on record.'
+          : 'Trial division on this page goes up to 10⁷.');
     } else if (kind === 'even') {
       sum = 'algebraic';
       text = '2^' + fmt(n) + ' − 25 = (2^' + fmt(n / 2) + ' − 5) × (2^' + fmt(n / 2) + ' + 5), and 3 divides the first factor.';
@@ -560,41 +649,75 @@
         prime: 'It is ' + (ctx.primeInfo[n] && !ctx.primeInfo[n].found ? 'prime' : 'a probable prime') + ', so there are no factors to list.',
         'sieve-big': 'The sieve removed it, so some prime between 10⁷ and ' + depth + ' divides it. The sieve output keeps only the survivors, so that factor is not on record yet.',
         untested: 'None. No prime below ' + depth + ' divides it' + (info.pm1 && info.pm1[0] ? ', and P-1 found nothing' : '') + '.',
-        queued: 'None yet: no prime below 10⁷ divides it. The sieve will try every p up to ' + S.depth(ctx.site.sieve_target || 1e14) + '.',
+        queued: 'None yet: no prime below 10⁷ divides it. The sieve will try every p up to ' + S.depth(S.sieveTarget(ctx.site, n).target) + '.',
         todo: 'None yet: no prime below 10⁷ divides it.'
       }[kind] || '—';
     }
     document.getElementById('fac-sum').textContent = sum;
     var html = '';
     if (out.length) {
-      html = '<div class="table-wrap"><table class="data"><thead><tr><th class="r">Factor p</th><th class="r">Digits</th><th class="r">Bits</th><th>p − 1</th><th class="r">Order of 2 mod p</th>' +
-        '<th>Found</th><th class="text">How</th><th class="text">Who</th><th class="r">Min B1</th><th class="r">Min B2</th></tr></thead><tbody>' +
+      html = '<div class="table-wrap"><table class="data"><thead><tr><th class="r">Factor p</th><th class="r">Digits</th><th class="r">Bits</th><th>p − 1</th>' +
+        '<th>Found</th><th>Method</th><th class="text">Who</th><th class="r">Min B1</th><th class="r">Min B2</th></tr></thead><tbody>' +
         out.map(function (r) {
-          return '<tr' + (r.cls ? ' class="' + r.cls + '"' : '') + '><td class="r' + (r.cls === 'group' ? ' wrap big' : '') + '">' + r.p + '</td><td class="r">' + r.digits + '</td><td class="r">' + r.bits +
-            '</td><td class="wrap' + (r.cls === 'group' ? ' text muted' : '') + '">' + r.pm1 + '</td><td class="r wrap num">' + r.ord +
-            '</td><td>' + esc(r.date) + '</td><td class="text">' + esc(r.how) + '</td><td class="text">' + esc(r.who) + '</td><td class="r">' + r.b1 + '</td><td class="r">' + r.b2 + '</td></tr>';
-        }).join('') + '</tbody></table></div>' + '<p class="small">' + out.map(function (r) { return esc(r.rel); }).join(' ') + '</p>';
+          return '<tr><td class="r">' + r.p + '</td><td class="r">' + r.digits + '</td><td class="r">' + r.bits + '</td><td>' + r.pm1 +
+            '</td><td>' + r.date + '</td><td>' + esc(r.how) + '</td><td class="text">' + esc(r.who) + '</td><td class="r">' + r.b1 + '</td><td class="r">' + r.b2 + '</td></tr>';
+        }).join('') + '</tbody></table></div>' + (text ? '<p class="small">' + esc(text) + '</p>' : '');
     } else {
       html = '<p class="body">' + esc(text) + '</p>';
     }
     document.getElementById('factors').innerHTML = html;
   }
 
+  // "factor 7" or "13 factors, listed above"
+  function factorsText(fs) {
+    return fs.length === 1 ? 'factor ' + wrapBig(fs[0].p) : fmt(fs.length) + ' factors, listed above';
+  }
+  // the date column: to the second where the result files have the time
+  function stamp(ts) { return ts ? esc(String(ts).slice(0, 19).replace('T', ' ')) : '—'; }
+  /* The second sieve of a range sieved twice, as a history row: every factor below its depth, the ones known
+     before it (found by the first sieve, by P-1, or below 10⁷) marked as already known */
+  function secondSieve(info, row) {
+    var depth = row.sieve.depth, all = [], seen = {};
+    var add = function (p, known) { if (!seen[p]) { seen[p] = true; all.push({ p: p, known: known }); } };
+    (info.p1 || []).forEach(function (x) {
+      (x.parts || [x.F]).forEach(function (q) { if (BigInt(String(q)) < BigInt(depth)) add(String(q), true); });
+    });
+    (info.factors || []).forEach(function (f) { add(f.p, f.small || !!(f.src && f.src.before)); });
+    var k = all.filter(function (f) { return f.known; }).length;
+    var result = !all.length ? 'no factor'
+      : all.length === 1 ? 'factor ' + wrapBig(all[0].p) + (k ? ', already known' : '')
+      : fmt(all.length) + ' factors, listed above' + (k === all.length ? ' · all already known' : k ? ' · ' + fmt(k) + ' already known' : '');
+    return [stamp(row.sieve.end), 'Sieve', esc(S.prog(row.sieve.program)) || '—', 'every p &lt; ' + S.depth(depth), result];
+  }
   function paintHistory(n, info, row, pInfo, tiny) {
-    var kind = info.kind, H = [];
-    if (row && row.sieved && !tiny && kind !== 'even') {
-      H.push([row.sieve.end ? S.day(row.sieve.end) : '—', 'Sieve', esc(S.prog(row.sieve.program)) || '—', 'every p &lt; ' + S.depth(row.sieve.depth),
-        kind === 'sieve' ? 'factor ' + fmt(info.sp) : kind === 'sieve-big' ? 'factor &gt; 10⁷' : 'no factor']);
+    var kind = info.kind, H = [], before = info.before, again = null;
+    if (row && row.sieved && !tiny && kind !== 'even' && before) {
+      // sieved twice: the first sieve, then the P-1 and PRP work, then the second sieve (below). The first sieve
+      // counts only with the factors it kept: for an n it struck out without keeping one, it gets no row
+      var kept = info.firstKept || [];
+      if (info.oldSurvivor || kept.length) {
+        H.push([stamp(before.end), 'Sieve', esc(S.prog(before.program)) || '—', 'every p &lt; ' + S.depth(before.depth),
+          info.oldSurvivor ? 'no factor' : factorsText(kept)]);
+      }
+      again = secondSieve(info, row);
+    } else if (row && row.sieved && !tiny && kind !== 'even') {
+      H.push([stamp(row.sieve.end), 'Sieve', esc(S.prog(row.sieve.program)) || '—', 'every p &lt; ' + S.depth(row.sieve.depth),
+        info.factors && info.factors.length ? factorsText(info.factors) : kind === 'sieve-big' ? 'factor &gt; 10⁷' : 'no factor']);
     }
     if (row && !row.sieved && row.sieve_part && kind !== 'even') {
-      H.push([row.sieve_part.end ? S.day(row.sieve_part.end) : '—', 'Sieve', esc(S.prog(row.sieve_part.program || '')) || '—', partText(row),
-        info.sf ? 'factor ' + fmt(info.sf) : 'no factor']);
+      H.push([stamp(row.sieve_part.end), 'Sieve', esc(S.prog(row.sieve_part.program || '')) || '—', partText(row),
+        (info.factors || []).some(function (f) { return !f.small; }) ? factorsText(info.factors.filter(function (f) { return !f.small; })) : 'no factor']);
     }
     (info.pm1 || []).forEach(function (r) {
-      var who = user(info.shard, r, 5);
+      var who = user(info.shard, r, 5), qs = [];
+      // the primes this run found: a reported product of several primes counts as those primes
+      String(r[3] || '').split(',').forEach(function (F) {
+        var x = F ? (info.p1 || []).filter(function (y) { return y.F === F; })[0] : null;
+        if (F) qs = qs.concat(x && x.parts ? x.parts.map(String) : [F]);
+      });
       H.push([esc(r[0]), 'P-1', esc(program(info.shard, r, 4)) + (who !== ctx.site.credit ? ' · ' + esc(who) : ''),
         'B1 = ' + fmt(r[1]) + (r[2] ? ', B2 = ' + fmt(r[2]) : ', stage 1'),
-        r[3] ? 'factor ' + wrapBig(r[3]) + (info.parts && r === info.factorRec ? ' <span class="muted">(' + info.parts.length + ' primes, listed above)</span>' : '') : 'no factor']);
+        !qs.length ? 'no factor' : qs.length === 1 ? 'factor ' + wrapBig(qs[0]) : fmt(qs.length) + ' factors, listed above']);
     });
     (info.prp || []).forEach(function (r) {
       var who = user(info.shard, r, 7);
@@ -604,6 +727,7 @@
     if (kind === 'prime' && !tiny && !(info.prp || []).length) {
       H.push([esc(pInfo.found), 'PRP-3', esc(pInfo.program || ''), 'FFT ' + S.fft(pInfo.fft) + (pInfo.proof_power ? ' · proof power ' + pInfo.proof_power : ''), 'probable prime']);
     }
+    if (again) H.push(again);
     var el = document.getElementById('history');
     if (H.length) {
       el.innerHTML = '<div class="table-wrap"><table class="data"><thead><tr><th>Date (UTC)</th><th class="text">Work</th><th class="text">Program</th><th>Parameters</th><th>Result</th></tr></thead><tbody>' +
@@ -617,17 +741,17 @@
     }
   }
 
-  function paintProps(n, valid, row, rangeLabel) {
+  function paintProps(n, valid, row) {
     var P = [];
     if (valid && n >= 5 && n < 1e7) {
       P = [
         ['n mod 6', String(n % 6) + (n % 2 === 0 ? ' (even)' : n % 6 === 5 && n > 5 ? ' (7 divides)' : '')],
-        ['Bits', n >= 6 ? fmt(n) : '3'],
         ['Binary', fmt(n - 5) + ' ones, then 00111'],
         ['Decimal', esc(decimal(n))],
-        ['Range', rangeLabel],
-        ['Data file', ctx.sum.shards && ctx.sum.shards.indexOf(S.shardName(n)) < 0 ? '— <span class="muted">(nothing recorded yet)</span>'
-          : '<a href="data/n/' + S.shardName(n) + '.json">data/n/' + S.shardName(n) + '.json</a>']
+        ['Data file', (ctx.sum.shards && ctx.sum.shards.indexOf(S.shardName(n)) < 0 ? '— <span class="muted">(nothing recorded yet)</span>'
+          : '<a href="data/n/' + S.shardName(n) + '.json">data/n/' + S.shardName(n) + '.json</a>') +
+          (ctx.sum.factor_files && ctx.sum.factor_files.indexOf(S.shardName(n)) >= 0
+            ? ' · sieve factors <a href="data/f/' + S.shardName(n) + '.json">data/f/' + S.shardName(n) + '.json</a>' : '')]
       ];
     }
     document.getElementById('props').innerHTML = P.map(function (p) { return '<div><dt>' + p[0] + '</dt><dd>' + p[1] + '</dd></div>'; }).join('');
@@ -647,11 +771,14 @@
       if (m < 5) code = 'X';
       else if (ctx.primeInfo[m]) code = 'P';
       else if (sieved) {
-        var pm = info.shard.pm1[m], pr = info.shard.prp[m];
+        var pm = info.shard.pm1[m], pr = info.shard.prp[m] || [];
+        var got = function (c) { return pr.some(function (r) { return r[1] === c; }); };
+        // what is known now: a P-1 factor, a prime, a sieve factor (a second sieve finds some for PRP composites), else the PRP result
         if (pm && pm.some(function (r) { return r[3]; })) code = 'F';
-        else if (pr && pr.length) code = pr.some(function (r) { return r[1] === 'P'; }) ? 'P' : pr.some(function (r) { return r[1] === 'R'; }) ? 'R' : 'C';
-        else if (info.survivors.has(m)) code = 'U';
-        else code = 'S';
+        else if (got('P')) code = 'P';
+        else if (got('R')) code = 'R';
+        else if (!info.survivors.has(m)) code = 'S';
+        else code = pr.length ? 'C' : 'U';
       } else {
         code = 'U';
         var value = m < 53 ? Math.pow(2, m) - 25 : Infinity;
@@ -661,7 +788,7 @@
           if (p === 2 || p === 5) continue;
           if (S.powmod(2, m, p) === 25 % p) { code = 'S'; break; }
         }
-        if (code === 'U' && info.shard && info.shard.sf && info.shard.sf[m]) code = 'S';
+        if (code === 'U' && hasBig(info.ff, info.shard, m)) code = 'S';
       }
       counts[code] = (counts[code] || 0) + 1;
       var label = 'n = ' + fmt(m) + ': ' + names[code];

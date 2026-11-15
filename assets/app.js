@@ -14,6 +14,11 @@
     return String(k).split('').map(function (c) { return c === '-' ? '⁻' : (SUP[Number(c)] || c); }).join('');
   };
   Site.tenTo = function (e) { return '10' + Site.sup(e); };
+  /* The sieve target for exponent n: content/site.json sieve_targets [{lo, hi, target, note}], else sieve_target */
+  Site.sieveTarget = function (site, n) {
+    var t = ((site && site.sieve_targets) || []).filter(function (x) { return n >= x.lo && n < x.hi; })[0];
+    return t || { target: (site && site.sieve_target) || 1e14 };
+  };
   /* Sieve depths: 10⁷, 1.61×10⁹, 2³² (for 2^32 - 1) */
   Site.depth = function (d) {
     if (!d) return '—';
@@ -45,6 +50,12 @@
   Site.fmtBig = function (v) { return String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ','); };
   Site.minute = function (ts) { return ts ? String(ts).slice(0, 16) : '—'; };
   Site.day = function (ts) { return ts ? String(ts).slice(0, 10) : '—'; };
+  /* HTML: the day, with the time to the second on hover (UTC, as the result files have it) */
+  Site.when = function (ts) {
+    if (!ts) return '—';
+    var s = String(ts), d = Site.esc(s.slice(0, 10));
+    return s.length > 10 ? '<span title="' + Site.esc(s.slice(0, 19).replace('T', ' ')) + ' UTC">' + d + '</span>' : d;
+  };
   Site.pct = function (x, d) { return (x * 100).toFixed(d === undefined ? 1 : d) + '%'; };
   Site.esc = function (s) {
     return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -78,6 +89,12 @@
     var name = Site.shardName(n);
     if (have && have.indexOf(name) < 0) return Promise.resolve(null);
     return Site.load('n/' + name).catch(function () { return null; });
+  };
+  // the sieve factors above 10^7 for n's 0.1M (data/f/<x.x>.json), when summary.json lists that file
+  Site.factorFile = function (n, have) {
+    var name = Site.shardName(n);
+    if (!have || have.indexOf(name) < 0) return Promise.resolve(null);
+    return Site.load('f/' + name).catch(function () { return null; });
   };
   Site.all = function (names) { return Promise.all(names.map(Site.load)); };
   Site.fail = function (where, err) {
@@ -168,6 +185,31 @@
       if (Site.powmod(2, n, p) === 25 % p) return p;
     }
     return 0;
+  };
+  /* Every prime p <= limit dividing 2^n - 25, smallest first (p itself excluded when 2^n - 25 is that small).
+     Left to right over the bits of n with base 2: one squaring per bit and a doubling per 1 bit, the top bits
+     at once as 2^t with t < 32; the squaring is reduced with 1/p instead of %, then corrected (exact below 2^53). */
+  Site.factorsBelow = function (n, limit) {
+    var P = Site.primesUpTo(limit), out = [];
+    var value = n < 53 ? Math.pow(2, n) - 25 : Infinity;
+    var bits = n.toString(2), head = 0, i = 0;
+    while (i < bits.length && head * 2 + (bits.charCodeAt(i) - 48) < 32) { head = head * 2 + (bits.charCodeAt(i) - 48); i++; }
+    var L = bits.length - i, one = new Uint8Array(L), start = Math.pow(2, head);
+    for (var j = 0; j < L; j++) one[j] = bits.charCodeAt(i + j) === 49 ? 1 : 0;
+    for (var k = 0; k < P.length; k++) {
+      var p = P[k];
+      if (p >= value) break;
+      if (p === 2 || p === 5) continue;
+      var r = start % p, inv = 1 / p;
+      for (j = 0; j < L; j++) {
+        var rr = r * r;
+        r = rr - Math.floor(rr * inv) * p;
+        if (r < 0) r += p; else if (r >= p) r -= p;
+        if (one[j]) { r += r; if (r >= p) r -= p; }
+      }
+      if (r === 25 % p) out.push(p);
+    }
+    return out;
   };
   Site.dividesBig = function (pStr, n) {
     var p = BigInt(pStr);
@@ -274,16 +316,6 @@
       else rest = m;
     }
     return { factors: out, rest: rest };
-  };
-  /* Multiplicative order of 2 mod p, given the factorisation of p - 1. */
-  Site.order2 = function (p, fs) {
-    p = BigInt(p);
-    var o = p - BigInt(1), zero = BigInt(0), one = BigInt(1), two = BigInt(2);
-    for (var i = 0; i < fs.length; i++) {
-      var q = fs[i][0];
-      while (o % q === zero && Site.powmodBig(two, o / q, p) === one) o /= q;
-    }
-    return o;
   };
   /* Smallest B1, B2 for which P-1 finds p: B2 covers the largest prime of p-1, B1 everything else. */
   Site.minB = function (fs) {

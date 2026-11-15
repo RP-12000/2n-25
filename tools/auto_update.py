@@ -6,16 +6,18 @@ README.md). Each run:
 
   1. saves the uploads that are new on the upload Worker (tools/pull_submissions.py --new-only);
   2. when the archive drive is attached, copies new archive files both ways (tools/sync_archive.py --back);
-  3. stops here if nothing that tools/build.py reads has changed since the last published build;
-  4. rebuilds data/ (tools/build.py);
-  5. checks the new data against the published data: no known prime, PRP test, P-1 factor, resolved n,
+  3. once a day (UTC), reads the Top PRP ranks of the known primes from PRP Records into
+     archive/prptop.json (tools/prptop_ranks.py); after a failed read it tries again a few hours later;
+  4. stops here if nothing that tools/build.py reads has changed since the last published build;
+  5. rebuilds data/ (tools/build.py);
+  6. checks the new data against the published data: no known prime, PRP test, P-1 factor, resolved n,
      sieved range or partial sieve may go missing, no sieve depth may shrink and the frontier may not
      move back;
-  6. commits data/ alone and pushes it.
+  7. commits data/ alone and pushes it.
 
 It never commits anything outside data/ and never pushes a commit it did not make: it does nothing while
 files outside data/ have uncommitted changes or while this copy has commits of someone else's that are
-not on GitHub yet (work waiting for approval). It does not publish data that fails step 5, nor while
+not on GitHub yet (work waiting for approval). It does not publish data that fails step 6, nor while
 origin/main has commits this copy does not have: it puts data/ back as it was and waits for new input
 or a new commit. When GitHub is out of reach it commits anyway, and a later run pushes. Each run that
 does something adds a few lines to auto_update.log (not committed; a problem that repeats is written
@@ -23,7 +25,7 @@ once); auto_update_state.json keeps what the next run needs.
 
 Usage:
   pyw -3 tools\\auto_update.py             # what the scheduled task runs (no window)
-  py -3 tools\\auto_update.py --dry-run    # everything up to step 5, then stop; data/ is left rebuilt
+  py -3 tools\\auto_update.py --dry-run    # everything up to step 6, then stop; data/ is left rebuilt
   py -3 tools\\auto_update.py --force      # rebuild even if nothing changed
 
 Only the Python standard library is used.
@@ -45,6 +47,7 @@ LOG = os.path.join(REPO, "auto_update.log")
 STATE = os.path.join(REPO, "auto_update_state.json")
 LOCK = os.path.join(REPO, "auto_update.lock")
 LOCK_STALE_S = 2 * 3600          # a lock older than this was left by a run that died
+RANKS_RETRY_S = 3 * 3600         # after a failed read of the PRPTop ranks, wait this long before the next
 LOG_MAX_BYTES = 1_000_000
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0   # CREATE_NO_WINDOW: no console flashing under pyw
 MARK = "Made by tools/auto_update.py"                 # last line of every commit this script makes
@@ -411,6 +414,7 @@ def step(args, log, state):
             log.once("sync_problem", "sync_archive.py failed; going on with what is here:\n" + tail(out, 6))
         else:
             log.clear("sync_problem")
+    refresh_ranks(log, state)
     after = archive_files()
     new_files = sorted({x[0] for x in after - before})
     new_uploads = sorted({p.split("/")[1] for p in new_files if p.startswith("Submissions/")})
@@ -471,6 +475,8 @@ def step(args, log, state):
         body.append("Uploads: " + ", ".join(new_uploads))
     if new_files:
         body.append(f"Archive files added or changed: {len(new_files)}")
+    if "prptop.json" in new_files:
+        body.append("Top PRP ranks read again from PRP Records")
     body += summary
     msg = title + "\n\n" + "\n".join(body) + "\n\n" + MARK + "\n"
     msg_path = os.path.join(REPO, ".git", "AUTO_UPDATE_MSG")
@@ -485,6 +491,23 @@ def step(args, log, state):
     log(f"committed: {title}; " + "; ".join(summary))
     if origin == "ok":
         push(log)                                         # when offline, a later run pushes it
+
+
+def refresh_ranks(log, state):
+    """Read the Top PRP ranks once a (UTC) day; after a failure, try again a few hours later."""
+    today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    if state.get("ranks_day") == today or time.time() - state.get("ranks_try", 0) < RANKS_RETRY_S:
+        return
+    state["ranks_try"] = time.time()
+    code, out = tool("prptop_ranks.py", timeout=300)
+    if code:
+        log.once("ranks_problem", "prptop_ranks.py failed; will try again in a few hours:\n" + tail(out, 4))
+        return
+    log.clear("ranks_problem")
+    state["ranks_day"] = today
+    line = (out.strip().splitlines() or [""])[-1]
+    if "ranks changed" in line or "first read" in line:
+        log(line)
 
 
 def default_source():

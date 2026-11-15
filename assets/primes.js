@@ -155,13 +155,14 @@
     document.getElementById('prime-table').innerHTML = '<table class="data"><thead><tr><th class="r">#</th><th class="r">n</th><th class="r">Digits</th>' +
       '<th>First found (UTC)</th><th class="text">Found by</th><th class="r">FFT</th><th class="r">Proof</th><th class="r">Top PRP</th><th class="r">× prev</th><th class="text">Note</th></tr></thead><tbody>' +
       rows.join('') + '</tbody></table>';
-    var rd = ctx.doc.rank_date, below = ctx.site.discoverers && ctx.site.discoverers.below;
-    var records = '<a href="' + esc(ctx.site.links && ctx.site.links.prp_records || '#') + '">PRP Records</a>';
+    var rd = ctx.doc.rank_date, below = ctx.site.discoverers && ctx.site.discoverers.below, links = ctx.site.links || {};
+    var records = '<a href="' + esc(links.prp_records || '#') + '">PRP Records</a>';
     document.getElementById('prime-foot').innerHTML = '# is the term number in A379020. ' +
       (below ? 'Every prime below n = ' + fmt(below) + ' was known before this project: who found it first, and the month, are from Henri and Renaud Lifchitz’s ' +
         records + ' (anonymous where that list has no entry), while FFT and Proof describe this project’s own re-test. ' : '') +
-      (rd ? 'Top PRP ranks are from Henri Lifchitz’s <a href="' + esc(ctx.site.links && ctx.site.links.prp_records || '#') + '">PRP Records</a> list as of ' + esc(rd) +
-        '; that list starts at 10,000 digits. ' : '') +
+      (rd ? 'Top PRP is the rank in ' + (below ? '' : 'Henri and Renaud Lifchitz’s ') + records + ', which lists every known probable prime of 10,000 digits or more, largest first' +
+        (ctx.doc.rank_daily ? '; the ranks are read once a day from <a href="' + esc(links.prp_search || links.prp_records || '#') + '">its page for 2ⁿ − 25</a>, last on ' + esc(rd) + '. '
+          : ', as of ' + esc(rd) + '. ') : '') +
       'Proof is the power of the Prime95 PRP proof file kept for the result; × prev is n divided by the n before it.';
   }
 

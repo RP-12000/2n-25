@@ -7,6 +7,7 @@
   "siever": "https://github.com/RP-12000/Mass-Prime-Siever",
   "oeis": "https://oeis.org/A379020",
   "prp_records": "http://www.primenumbers.net/prptop/prptop.php",
+  "prp_search": "http://www.primenumbers.net/prptop/searchform.php?form=2%5En-25&action=Search",
   "prime95": "https://www.mersenne.org/download/"
  },
  "upload_endpoint": "https://upload-2n-25.kelvinizer.workers.dev",
@@ -29,6 +30,21 @@
   "from_n": 6643853
  },
  "sieve_target": 100000000000000,
+ "sieve_targets": [
+  {
+   "lo": 0,
+   "hi": 3600000,
+   "target": 100000000000,
+   "note": "This range was sieved a second time, to 10¹¹, in November 2026, after its P-1 and PRP work; that second sieve is its target."
+  }
+ ],
+ "sieve_factors_not_kept": [
+  {
+   "lo": 3200000,
+   "hi": 3600000,
+   "why": "2^n-25 Siever 3.0 wrote no factor files"
+  }
+ ],
  "prp_from_depth": 40000000000000,
  "exponent_start_after": 3600000,
  "active": {
@@ -239,13 +255,21 @@
  "confirmed_primes": [],
  "accepted_sieve_uploads": [],
  "ranks": {
-  "date": "2025-12-31",
+  "date": "2026-11-14",
   "values": {
-   "647545": "#2872",
-   "824325": "#1899",
-   "1538959": "#650",
-   "2020893": "#274",
-   "2421175": "#209"
+   "55557": "#215,351",
+   "60415": "#209,454",
+   "63589": "#206,742",
+   "69463": "#170,165",
+   "75949": "#164,769",
+   "98265": "#152,262",
+   "212295": "#21,022",
+   "416773": "#6,240",
+   "647545": "#3,133",
+   "824325": "#2,135",
+   "1538959": "#764",
+   "2020893": "#339",
+   "2421175": "#241"
   }
  },
  "timeline": [
@@ -275,11 +299,15 @@
   ],
   [
    "2026-11-14",
-   "3.6M – 5M sieved to 3.5 × 10^13 (laptop p < 10^13, Kaggle the rest): 47,468 of the 700,000 odd n are left."
+   "3.6M – 5M sieved to 4 × 10^13 (laptop p < 10^13, Kaggle the rest): 47,262 of the 700,000 odd n are left."
+  ],
+  [
+   "2026-11-14",
+   "0 – 3.6M sieved again, to 10^11, with Mass Prime Siever 12.0: 409,246 factors above 10^7 that were not on record before."
   ],
   [
    "next",
-   "Sieve 3.6M – 5M on to 4 × 10^13, then PRP from 3.6M, smallest n first."
+   "PRP from 3.6M, smallest n first."
   ]
  ],
  "pause": {

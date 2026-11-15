@@ -6,10 +6,16 @@ another copy given with --archive), and writes the JSON files that the pages loa
 
   data/summary.json   totals, search frontier and the next n to test, latest results, daily counts
   data/ranges.json    one row per 0.2M of n below 10^7
-  data/primes.json    every known n, with who first found it
+  data/primes.json    every known n, with who first found it and its Top PRP rank (archive/prptop.json, read
+                      once a day by tools/prptop_ranks.py; while that file is missing, the ranks in content/site.json)
   data/sieve.json     P-1 factor sizes and survivor constants
   data/site.json      content/site.json (plans, notes), copied as is
-  data/n/<x.x>.json   one file per 0.1M of n: sieve survivors and their P-1 / PRP records
+  data/n/<x.x>.json   one file per 0.1M of n: sieve survivors and every P-1 / PRP record; in a range sieved
+                      twice, also the survivors of the first sieve (s0)
+  data/f/<x.x>.json   one file per 0.1M of n sieved by Mass Prime Siever: each sieve slice over those n (p and n
+                      range, when it ended to the second, who ran it, whether it was uploaded, whether it is the
+                      first sieve of a range sieved twice) with every factor above 10^7 it found first; the
+                      pages find the smaller factors themselves
 
 Archive layout it expects (the folder of the 2^n-25 project; a range folder may be named <a>M~<b>M as
 on the archive drive or <a>M-<b>M as in archive/):
@@ -21,6 +27,15 @@ on the archive drive or <a>M-<b>M as in archive/):
                                   factor is checked). A run split over several range folders keeps its
                                   siever.log in each; its run time is shared out evenly between them.
                                   Slices that do not start at p <= 7 yet are shown as a partial sieve.
+                                  A range sieved by the old sievers first and by Mass Prime Siever again
+                                  later keeps both: the old files stay its first sieve (depth, run time and
+                                  survivors, before its P-1 and PRP work), Mass Prime Siever its second.
+                                  Each factor is credited to whoever found it first: a factor that divides
+                                  a P-1 factor of the same n to P-1; one below the first sieve's depth, of an
+                                  n the first sieve removed, to the first sieve (its Factor Files list
+                                  exactly these; content/site.json sieve_factors_not_kept names the ranges
+                                  whose first sieve kept no such list, where they count as new); the rest
+                                  to the second sieve.
   Ranges/<a>M~<b>M/Candidates/    *.txt work lines; the 3rd comma field is n
   Ranges/<a>M~<b>M/Pm1/results.json.txt
   Ranges/<a>M~<b>M/PRP/results.json.txt
@@ -67,6 +82,7 @@ LOG10_2 = math.log10(2)
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_ARCHIVE = os.path.join(REPO, "archive")  # filled by tools/sync_archive.py
 SPLIT_CACHE = os.path.join(REPO, "archive", "pm1_splits.json")  # composite P-1 factors split into primes
+PRPTOP = os.path.join(REPO, "archive", "prptop.json")  # Top PRP ranks, read once a day by tools/prptop_ranks.py
 MONTHS = {m: i + 1 for i, m in enumerate("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split())}
 RANGE_DIR = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*M\s*[~-]\s*(\d+(?:\.\d+)?)\s*M\s*$", re.I)
 
@@ -329,6 +345,9 @@ def small_factor(n, limit=1_000_000):
     return None
 
 
+ITSELF = "is 2^n - 25 itself"   # a sieve from p = 2 meets the small n where 2^n - 25 is a prime below P1
+
+
 def factor_problem(n, p, p0, p1):
     """Why the sieve factor p of 2^n - 25 is not accepted, or None when it checks out."""
     if not p0 <= p < p1:
@@ -336,7 +355,7 @@ def factor_problem(n, p, p0, p1):
     if p < 2 or pow(2, n, p) != 25 % p:
         return "does not divide 2^n - 25"
     if n < 64 and p >= (1 << n) - 25:
-        return "is 2^n - 25 itself"
+        return ITSELF
     if not is_prime(p):
         return "is not prime"
     return None
@@ -595,18 +614,19 @@ def check_mps(entries, lo, hi, notes):
     Every factor in "factored" is checked: P0 <= p < P1, p divides 2^n - 25, p is not 2^n - 25 itself, and
     p is prime. An n counts as removed only when at least one of its factors checks out. Survivors are the
     odd n covered by a slice that starts at p <= 7, minus the removed ones. Returns (survivors, smallest
-    checked factor per removed n, per-row sieve info, uploader of each removed n's factor, partial rows: the
-    rows sieved over some p ranges but not from p <= 7 yet).
+    checked factor per removed n, per-row sieve info, partial rows: the rows sieved over some p ranges but not
+    from p <= 7 yet, and every checked factor above TRIAL_LIMIT of each slice: {id(entry): {n: {p, ...}}}).
 
     The depth of a row is the largest P reached from p <= 7 by slices that join up, taken over every part of
     the row (slices may cover only part of a row's n). Uploaded slices count only when e["depth_ok"]."""
-    removed, removed_by = {}, {}
+    removed, found = {}, {}
     for e in entries:
         a, b = max(e["n0"], lo, 5), min(e["n1"], hi)
         if a >= b:
             notes.add("sieve output for n outside its range folder", e["path"])
             continue
         listed = collections.Counter()
+        mine = found.setdefault(id(e), {})   # n -> this slice's checked factors above TRIAL_LIMIT
         for item in e["factored"]:
             try:
                 n = int(item["n"])
@@ -620,18 +640,24 @@ def check_mps(entries, lo, hi, notes):
             if not fs:
                 notes.add("sieve output lists n as factored but gives no factor (n kept as a candidate)", f"{e['path']}: n = {n}")
                 continue
-            good = None
+            good, itself = [], False
             for p in fs:
                 why = factor_problem(n, p, e["p0"], e["p1"])
                 if why is None:
-                    good = p if good is None else min(good, p)
+                    good.append(p)
+                elif why == ITSELF:
+                    itself = True            # 2^n - 25 is prime: not a factor, and no problem either
                 else:
                     notes.add(f"sieve factor that {why}", f"{e['path']}: n = {n}, p = {p}")
-            if good is None:
-                notes.add("n kept as a candidate because none of its sieve factors checked out", f"{e['path']}: n = {n}")
-            elif n not in removed or good < removed[n]:
-                removed[n] = good
-                removed_by[n] = e.get("who")
+            if not good:
+                if not itself:
+                    notes.add("n kept as a candidate because none of its sieve factors checked out", f"{e['path']}: n = {n}")
+                continue
+            big = [p for p in good if p > TRIAL_LIMIT]   # the pages find the smaller ones themselves
+            if big:
+                mine.setdefault(n, set()).update(big)
+            if n not in removed or min(good) < removed[n]:
+                removed[n] = min(good)
         for x in e["prp"]:
             try:
                 listed[int(x)] += 1
@@ -698,7 +724,8 @@ def check_mps(entries, lo, hi, notes):
         logs = list(runs.values())
         info = {"depth": depth, "program": logs[0]["program"] if logs else "Mass Prime Siever 12.0",
                 "start": min((g["start"] for g in logs if g["start"]), default=None),
-                "end": max((g["end"] for g in logs if g["end"]), default=None) or max((e["time"][:19] for e in used.values() if e["time"]), default=None),
+                # when it finished, to the second: the Timestamp in results.json, else the end of siever.log
+                "end": max((e["time"][:19] for e in used.values() if e["time"]), default=None) or max((g["end"] for g in logs if g["end"]), default=None),
                 "cpu_s": round(sum(g["wall_s"] for g in logs)), "stations": len({e["path"] for e in used.values()}),
                 "_runs": list(runs)}           # Archive.scan shares a run's time between the rows it covers
         who = sorted({e["who"] for e in used.values() if e.get("who")})
@@ -707,7 +734,7 @@ def check_mps(entries, lo, hi, notes):
         rows.append({"lo": max(r_lo, lo), "hi": min(r_lo + ROW, hi), "info": info})
     for path, reach, p0 in sorted(gaps):
         notes.add("gap in the sieved p range", f"{path}: nothing between {reach} and {p0}")
-    return survivors, removed, rows, removed_by, part
+    return survivors, removed, rows, part, found
 
 
 def read_results(path, notes):
@@ -726,6 +753,21 @@ def read_results(path, notes):
             continue
         out.append(j)
     return out
+
+
+def read_ranks(site, notes, path=PRPTOP):
+    """Top PRP ranks: archive/prptop.json when it is there, otherwise the ones written in content/site.json."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            doc = json.load(f)
+        values = {str(int(n)): f"#{int(r):,}" for n, r in doc["ranks"].items()}
+        return {"date": str(doc["checked"])[:10], "values": values, "daily": True}
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+        notes.add("archive/prptop.json could not be read; the ranks in content/site.json are shown", f"{type(e).__name__}: {e}")
+    r = site.get("ranks") or {}
+    return {"date": r.get("date"), "values": r.get("values") or {}, "daily": False}
 
 
 def digits_of(n):
@@ -756,13 +798,16 @@ class Archive:
         self.programs = []
         self.users = [credit]
         self.factors = []                    # (n, p string, time, b1, b2, user)
+        self.survivors_before = set()        # survivors of the first sieve, in the ranges sieved twice
+        self.factors_not_kept = []           # [(lo, hi)] whose first sieve kept no list of its factors (content/site.json)
+        self.small_n = set()                 # n where 2^n - 25 is a small prime (content/site.json small_primes)
+        self.depth_overrides = {}            # range lo -> sieve depth for old sieve files without one (range_overrides)
         self.daily_prp = collections.Counter()
         self.daily_pm1 = collections.Counter()
         self.program_counts = collections.Counter()
         self.proofs = 0
         self.prime_records = {}
-        self.sieve_factors = {}              # n -> checked Mass Prime Siever factor above TRIAL_LIMIT
-        self.sieve_factor_by = {}            # n -> index in users, when that factor came from an upload
+        self.sieve_sources = []              # sieve slices, each with every checked factor above TRIAL_LIMIT it found
         self.sieve_smallest = {}             # n -> smallest checked Mass Prime Siever factor, any size
         self.mps_spans = []                  # [(lo, hi)] rows sieved by Mass Prime Siever
         self.accepted_uploads = set()        # uploaded sieve slices to count toward the depth (content/site.json)
@@ -811,12 +856,31 @@ class Archive:
             for path in sorted(glob.glob(os.path.join(glob.escape(sub_root), "*", "submission.json"))):
                 self.scan_submission(path)
 
+    def old_sieve(self, tf, candidates, pm1, lo):
+        """The old sievers' output in TF/: (sieve info, survivors, whether there is a survivor list). The
+        largest worktodo_general*.txt is the survivor list; without one, the Candidates/*.txt work lines and the
+        n given a P-1 run stand in for it. A depth in content/site.json range_overrides replaces the files' one
+        (origin.txt of 2.4M-2.6M names none)."""
+        info = sieve_info(tf, self.notes)
+        if lo in self.depth_overrides:
+            info["depth"] = self.depth_overrides[lo]
+        survivors = set()
+        lists = sorted(glob.glob(os.path.join(glob.escape(tf), "worktodo_general*.txt"))) if os.path.isdir(tf) else []
+        for path in lists:
+            got = n_from_work_lines(path)
+            if len(got) > len(survivors):
+                survivors = got
+        if not survivors and candidates:
+            survivors = set(candidates) | {j["n"] for j in pm1}
+        return info, survivors, bool(survivors)
+
     def scan_range(self, lo, hi, folder):
         tf = os.path.join(folder, "TF")
+        name = os.path.basename(folder)
         mps = mps_entries(tf, self.notes) if os.path.isdir(tf) else []
         extra = [e for e in self.uploads if e["n0"] < hi and e["n1"] > lo]
         self.uploads_seen.update(id(e) for e in extra)
-        named = {}                           # (n, p) -> name of the earliest upload that lists that factor
+        kept = []
         if mps:
             # an upload whose p range over these n the archive keeps too (the project's own Kaggle runs) counts once
             kept = [e for e in extra if any(o["p0"] <= e["p0"] and o["p1"] >= e["p1"] and o["n0"] <= max(e["n0"], lo)
@@ -825,42 +889,6 @@ class Archive:
             kept_ids = {id(e) for e in kept}
             extra = [e for e in extra if id(e) not in kept_ids]
             self.uploads_used.update(id(e) for e in extra)
-            # its factors keep the name they were uploaded under, as they would without the archive copy
-            for e in kept:
-                for item in e["factored"]:
-                    try:
-                        n = int(item["n"])
-                        fs = [int(f) for f in item.get("factors") or []]
-                    except (KeyError, TypeError, ValueError):
-                        continue
-                    if lo <= n < hi:
-                        for f in fs:
-                            if e["p0"] <= f < e["p1"]:
-                                named.setdefault((n, f), e["who"])
-        survivors = set()
-        if mps:
-            # Mass Prime Siever 12.0: merge the slices (and uploaded ones), checking every factor
-            survivors, removed, mps_rows, removed_by, part = check_mps(mps + extra, lo, hi, self.notes)
-            for r in part:
-                self.partial.append({**r, "folder": os.path.basename(folder)})
-            for n, p in removed.items():
-                self.sieve_smallest[n] = p
-                if p > TRIAL_LIMIT:
-                    self.sieve_factors[n] = str(p)
-                    by = removed_by.get(n) or named.get((n, p))
-                    if by:
-                        self.sieve_factor_by[n] = self.index(self.users, by)
-            info = None
-        else:
-            for e in extra:
-                self.notes.add("uploaded sieve output for a range without Mass Prime Siever output of its own (not used)",
-                               f"{e['upload']}: {os.path.basename(folder)}")
-            info = sieve_info(tf, self.notes)
-            lists = sorted(glob.glob(os.path.join(glob.escape(tf), "worktodo_general*.txt"))) if os.path.isdir(tf) else []
-            for path in lists:
-                got = n_from_work_lines(path)
-                if len(got) > len(survivors):
-                    survivors = got
         candidates = set()
         for path in sorted(glob.glob(os.path.join(glob.escape(folder), "Candidates", "*.txt"))):
             candidates |= n_from_work_lines(path)
@@ -868,25 +896,85 @@ class Archive:
         prp_path = os.path.join(folder, "PRP", "results.json.txt")
         pm1 = read_results(pm1_path, self.notes) if os.path.exists(pm1_path) else []
         prp = read_results(prp_path, self.notes) if os.path.exists(prp_path) else []
-        everything = survivors | candidates | {j["n"] for j in pm1} | {j["n"] for j in prp}
-        outside = [n for n in everything if not lo <= n < hi]
-        if outside:
-            self.notes.add("n outside its range folder", f"{folder}: n = {min(outside)}")
+        everything = candidates | {j["n"] for j in pm1} | {j["n"] for j in prp}
+        # the old sievers' files (origin.txt, Station N/): in a range Mass Prime Siever sieved again, its first sieve
+        has_old = os.path.isdir(tf) and (os.path.exists(os.path.join(tf, "origin.txt")) or
+                                         bool(glob.glob(os.path.join(glob.escape(tf), "Station *"))))
         if mps:
+            # Mass Prime Siever 12.0: merge the slices (and uploaded ones), checking every factor
+            survivors, removed, mps_rows, part, found = check_mps(mps + extra, lo, hi, self.notes)
+            for r in part:
+                self.partial.append({**r, "folder": name})
+            self.sieve_smallest.update(removed)
+            first = None
+            if has_old:
+                o_info, o_surv, o_list = self.old_sieve(tf, candidates, pm1, lo)
+                if o_info["depth"] and o_list:
+                    # a candidate missing from the survivor list was tested all the same: it counts as a survivor
+                    first = {"info": o_info, "survivors": o_surv | candidates,
+                             "kept": not any(a <= lo and hi <= b for a, b in self.factors_not_kept)}
+                else:
+                    self.notes.add("old sieve files without a depth or a survivor list next to Mass Prime Siever output "
+                                   "(only the Mass Prime Siever output is used)", folder)
+            # every factor P-1 reported, by n: a sieve factor that divides one of them was P-1's to find first
+            pm1_found = collections.defaultdict(list)
+            for j in pm1:
+                if j.get("status") == "F":
+                    for f in j.get("factors") or []:
+                        if str(f).strip().isdigit():
+                            pm1_found[j["n"]].append(int(str(f).strip()))
+            self.add_sources(lo, hi, kept, mps, extra, found, first, pm1_found)
+            everything |= survivors
+            rows = mps_rows
+            if not first:
+                self.survivors |= survivors
+            else:
+                old = first["survivors"]
+                everything |= old
+                lost = sorted(n for n in survivors if n not in old and n not in self.small_n)
+                if lost:
+                    self.notes.add("n the second sieve kept although the first sieve removed it (no factor below the second "
+                                   "sieve's depth; it has had no P-1 or PRP work)", f"{folder}: {len(lost)} n, first n = {lost[0]}")
+                missed = sorted(n for n in old if n in removed and removed[n] < first["info"]["depth"])
+                if missed:
+                    self.notes.add("n the first sieve left although a prime below its depth divides it",
+                                   f"{folder}: {len(missed)} n, first n = {missed[0]} (p = {removed[missed[0]]})")
+                # a row the second sieve has not covered from p <= 7, or not as deep as the first: the first sieve counts
+                deeper = [r for r in mps_rows if r["info"]["depth"] > first["info"]["depth"]]
+                if len(deeper) < len(mps_rows):
+                    self.notes.add("Mass Prime Siever output not deeper than the first sieve (the first sieve still counts)", folder)
+                rows = deeper
             # candidates.txt may predate a deeper slice; the checked sieve output decides, but a survivor
             # missing from the candidate list would never get its PRP test
-            unlisted = sorted(survivors - candidates) if candidates else []
+            unlisted = sorted(survivors - candidates - (first["survivors"] if first else set()) - self.small_n) if candidates else []
             for n in unlisted:
                 self.notes.add("sieve survivor missing from Candidates/*.txt (needs a PRP test)", f"{folder}: n = {n}")
-            for r in mps_rows:
+            covered = set()
+            for r in rows:
                 self.sieved_spans.append((r["lo"], r["hi"]))
                 self.mps_spans.append((r["lo"], r["hi"]))
-                self.dirs.append({"lo": r["lo"], "hi": r["hi"], "folder": os.path.basename(folder), "sieve": r["info"], "survivor_list": True})
-            self.survivors |= survivors
+                entry = {"lo": r["lo"], "hi": r["hi"], "folder": name, "sieve": r["info"], "survivor_list": True}
+                if first:
+                    self.survivors |= {n for n in survivors if r["lo"] <= n < r["hi"]}
+                    mine = {n for n in first["survivors"] if r["lo"] <= n < r["hi"]}
+                    entry["before"] = {k: first["info"][k] for k in ("depth", "program", "start", "end", "cpu_s", "stations")}
+                    entry["before"]["survivors"] = len(mine)
+                    self.survivors_before |= mine
+                self.dirs.append(entry)
+                covered.add((r["lo"], r["hi"]))
+            if first:
+                for r_lo in range(lo - lo % ROW, hi, ROW):
+                    a, b = max(r_lo, lo), min(r_lo + ROW, hi)
+                    if a < b and (a, b) not in covered:
+                        self.sieved_spans.append((a, b))
+                        self.survivors |= {n for n in first["survivors"] if a <= n < b}
+                        self.dirs.append({"lo": a, "hi": b, "folder": name, "sieve": first["info"], "survivor_list": True})
         else:
-            if not survivors and candidates:
-                survivors = set(candidates) | {j["n"] for j in pm1}
-            has_list = bool(survivors)
+            for e in extra:
+                self.notes.add("uploaded sieve output for a range without Mass Prime Siever output of its own (not used)",
+                               f"{e['upload']}: {name}")
+            info, survivors, has_list = self.old_sieve(tf, candidates, pm1, lo)
+            everything |= survivors
             if has_list:
                 self.sieved_spans.append((lo, hi))
                 self.survivors |= survivors
@@ -894,11 +982,81 @@ class Archive:
             if missing:
                 self.notes.add("candidate not in the sieve output", f"{folder}: n = {min(missing)}")
                 self.survivors |= missing
-            self.dirs.append({"lo": lo, "hi": hi, "folder": os.path.basename(folder), "sieve": info, "survivor_list": has_list})
+            self.dirs.append({"lo": lo, "hi": hi, "folder": name, "sieve": info, "survivor_list": has_list})
+        outside = [n for n in everything if not lo <= n < hi]
+        if outside:
+            self.notes.add("n outside its range folder", f"{folder}: n = {min(outside)}")
         for j in pm1:
             self.add_result(j, self.credit, pm1_path)
         for j in prp:
             self.add_result(j, self.credit, prp_path)
+
+    def add_sources(self, lo, hi, kept, mps, extra, found, first=None, pm1_found=None):
+        """Every checked sieve factor above TRIAL_LIMIT of the odd n in [lo, hi), under whoever found it first.
+        A factor that divides a P-1 factor of the same n is P-1's: it is shown with that result and listed under
+        no slice. In a range sieved twice (first), the first sieve comes first: every factor below its depth of
+        an n it removed, unless content/site.json says it kept no list of them (first["kept"]). Then an upload
+        that the archive keeps too, so its factors keep the name they were uploaded under; then the range
+        folder's own slices; then the other uploads, earliest first. A factor that several slices list is kept
+        once, under the first of them, and a run listed twice (an upload and the archive's copy of it: the same
+        p and n range) is listed once, under the upload. The pages find every other slice that found a factor
+        again from the slices' p ranges: a sieve finds every factor in its p range."""
+        checked = collections.defaultdict(set)
+        for by_n in found.values():
+            for n, ps in by_n.items():
+                checked[n] |= ps
+
+        def when(e):
+            # when the run finished, to the second: the Timestamp in its results.json, else the end of its siever.log
+            g = e.get("log") or {}
+            return str(e["time"][:19] if e["time"] else g.get("end") or "")
+
+        claimed = set()
+        for n, fs in (pm1_found or {}).items():
+            claimed.update((n, p) for p in checked.get(n, ()) if any(F % p == 0 for F in fs))
+        if first:
+            depth, old = first["info"]["depth"], first["survivors"]
+            src = {"p0": 2, "p1": depth, "n0": lo, "n1": hi, "end": first["info"]["end"] or None,
+                   "by": self.index(self.users, self.credit), "upload": False, "before": True, "f": {}}
+            self.sieve_sources.append(src)
+            if first["kept"]:
+                for n in sorted(checked):
+                    if n in old:
+                        continue
+                    mine = sorted(p for p in checked[n] if p < depth and (n, p) not in claimed)
+                    if mine:
+                        claimed.update((n, p) for p in mine)
+                        src["f"][n] = mine
+        listed_runs = {}                 # (p0, p1, n0, n1) -> its entry in sieve_sources
+        order = (sorted(kept, key=lambda e: (when(e), e["upload"])) + mps +
+                 sorted(extra, key=lambda e: (when(e), e["upload"])))
+        for e in order:
+            if id(e) in found:
+                listed = found[id(e)]
+            else:
+                # an upload the archive keeps too was not checked again: take the factors it lists that the
+                # archive's copy of the run checked
+                listed = collections.defaultdict(set)
+                for item in e["factored"]:
+                    try:
+                        n = int(item["n"])
+                        fs = [int(f) for f in item.get("factors") or []]
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                    if lo <= n < hi and n in checked:
+                        listed[n].update(p for p in fs if e["p0"] <= p < e["p1"] and p in checked[n])
+            key = (e["p0"], e["p1"], max(e["n0"], lo), min(e["n1"], hi))
+            src = listed_runs.get(key)
+            if src is None:
+                src = {"p0": key[0], "p1": key[1], "n0": key[2], "n1": key[3], "end": when(e) or None,
+                       "by": self.index(self.users, e.get("who") or self.credit), "upload": "upload" in e, "f": {}}
+                listed_runs[key] = src
+                self.sieve_sources.append(src)
+            for n, ps in listed.items():
+                new = sorted(p for p in ps if (n, p) not in claimed)
+                if new:
+                    claimed.update((n, p) for p in new)
+                    src["f"][n] = sorted(src["f"].get(n, []) + new)
 
     def scan_submission(self, path):
         try:
@@ -937,10 +1095,12 @@ class Archive:
         if wt == "P-1":
             factor = ""
             if j.get("status") == "F":
-                fs = j.get("factors") or []
-                factor = str(fs[0]) if fs else ""
-                if factor:
-                    self.factors.append((n, factor, ts, j.get("b1") or 0, j.get("b2") or 0, user))
+                # every factor the line reports, comma-separated (Prime95 reports one; when P-1 finds several
+                # primes in the same run it reports their product)
+                fs = [str(f).strip() for f in j.get("factors") or [] if str(f).strip()]
+                factor = ",".join(fs)
+                for f in fs:
+                    self.factors.append((n, f, ts, j.get("b1") or 0, j.get("b2") or 0, user))
             rec = [ts, j.get("b1") or 0, j.get("b2") or 0, factor, pid]
             if uid:
                 rec.append(uid)
@@ -1007,11 +1167,14 @@ def build(archive_root, out_dir, content_path):
     arc = Archive(archive_root, credit, notes)
     arc.confirmed = {int(n) for n in site.get("confirmed_primes", [])}
     arc.accepted_uploads = {str(x) for x in site.get("accepted_sieve_uploads", [])}
+    arc.factors_not_kept = [(int(x["lo"]), int(x["hi"])) for x in site.get("sieve_factors_not_kept", [])]
+    arc.small_n = {int(p["n"]) for p in site.get("small_primes", [])}
+    overrides = {int(k): v for k, v in site.get("range_overrides", {}).items()}
+    arc.depth_overrides = {lo: int(v["sieve_depth"]) for lo, v in overrides.items() if v.get("sieve_depth")}
     arc.scan()
     splits = split_factors(arc.factors, notes)
 
     small_primes = {p["n"]: p for p in site.get("small_primes", [])}
-    overrides = {int(k): v for k, v in site.get("range_overrides", {}).items()}
     active = site.get("active", {})
     model = site.get("model", {})
     versions = site.get("siever_versions", [])
@@ -1025,7 +1188,6 @@ def build(archive_root, out_dir, content_path):
     surv_sorted = sorted(arc.survivors)
     pm1_sorted = sorted(arc.pm1)
     prp_sorted = sorted(arc.prp)
-    sf_sorted = sorted(arc.sieve_factors)
 
     # ---- rows of 0.2M ----
     rows = []
@@ -1042,16 +1204,13 @@ def build(archive_root, out_dir, content_path):
         fac_n = {n for n in pm1_n if any(r[3] for r in arc.pm1[n])}
         prp_n = set(between(prp_sorted, lo, hi))
         prime_n = {n for n in prp_n if any(r[1] == "P" for r in arc.prp[n])} | set(smalls)
-        untested = [n for n in surv if n not in fac_n and n not in prp_n] if sieved else None
-        sieve = {}
+        untested = [n for n in surv if n not in fac_n and n not in prp_n and n not in small_primes] if sieved else None
+        sieve, before = {}, None
         for d in src:
             if d["survivor_list"]:
                 sieve = dict(d["sieve"])
+                before = d.get("before")
                 break
-        if lo in overrides:
-            for k, v in overrides[lo].items():
-                if k == "sieve_depth":
-                    sieve["depth"] = v
         program = sieve.get("program") or (version_for(lo) if sieved else None)
         pm1_recs = [r for n in pm1_n for r in arc.pm1[n]]
         prp_recs = [r for n in prp_n for r in arc.prp[n]]
@@ -1073,8 +1232,18 @@ def build(archive_root, out_dir, content_path):
         k_const = None
         if sieved and sieve.get("depth") and surv:
             k_const = round(len(surv) / odd * math.log(sieve["depth"]), 4)
-        last = max([t for t in (pm1_times[-1:] + prp_times[-1:]) if t] + ([sieve["end"]] if sieve.get("end") else []), default=None)
+        # the day the range was done: its last result, or its sieve; a second sieve, run after the range was done,
+        # does not move it (the first sieve counts)
+        sieve_end = (before or {}).get("end") or sieve.get("end")
+        last = max([t for t in (pm1_times[-1:] + prp_times[-1:]) if t] + ([sieve_end] if sieve_end else []), default=None)
         part = None if sieved else next((x for x in arc.partial if x["lo"] == lo and x["hi"] == hi), None)
+        if sieved and before:
+            # sieved twice: the first sieve (old sievers, before P-1 and PRP) and its survivors; P-1 counts once
+            # more for the n the second sieve left, which is what it adds to the second sieve
+            before = {**before, "program": before.get("program") or version_for(lo),
+                      "survivor_K": round(before["survivors"] / odd * math.log(before["depth"]), 4) if before["survivors"] else None}
+        else:
+            before = None
         rows.append({
             "lo": lo, "hi": hi, "odd": odd, "status": status, "sieved": sieved,
             "sieve": {"depth": sieve.get("depth"), "program": program, "start": sieve.get("start"), "end": sieve.get("end"),
@@ -1082,7 +1251,9 @@ def build(archive_root, out_dir, content_path):
                       **({"by": sieve["by"]} if sieve.get("by") else {})} if sieved else None,
             "survivors": len(surv) if sieved else None,
             "removed_by_sieve": removed,
-            "pm1": {"runs": len(pm1_n), "factors": len(fac_n), "b1": (b1s.most_common(1)[0][0] if b1s else None),
+            **({"sieve_before": before} if before else {}),
+            "pm1": {"runs": len(pm1_n), "factors": len(fac_n), **({"after_sieve": len(fac_n & surv_set)} if before else {}),
+                    "b1": (b1s.most_common(1)[0][0] if b1s else None),
                     "b1_values": sorted(b1s), "b2_median": (round(statistics.median(b2s)) if b2s else None),
                     "start": pm1_times[0] if pm1_times else None, "end": pm1_times[-1] if pm1_times else None},
             "prp": {"tests": len(prp_n), "primes": len(prime_n), "start": prp_times[0] if prp_times else None,
@@ -1102,7 +1273,7 @@ def build(archive_root, out_dir, content_path):
             frontier = row["lo"]
             break
         open_n = [n for n in between(surv_sorted, row["lo"], row["hi"])
-                  if not any(r[3] for r in arc.pm1.get(n, [])) and n not in arc.prp]
+                  if not any(r[3] for r in arc.pm1.get(n, [])) and n not in arc.prp and n not in small_primes]
         if open_n:
             frontier = min(open_n)
             break
@@ -1116,14 +1287,21 @@ def build(archive_root, out_dir, content_path):
         if not row["sieved"] or len(next_open) == 3:
             break
         for n in between(surv_sorted, max(row["lo"], frontier), row["hi"]):
-            if not any(r[3] for r in arc.pm1.get(n, [])) and n not in arc.prp:
+            if not any(r[3] for r in arc.pm1.get(n, [])) and n not in arc.prp and n not in small_primes:
                 next_open.append(n)
                 if len(next_open) == 3:
                     break
-    below = between(surv_sorted, 0, frontier)
+    # the frontier as it moved: in a range sieved twice, the n its first sieve left (the second sieve came after
+    # all its P-1 and PRP work, so the history stays as it was)
+    twice = [(r["lo"], r["hi"]) for r in rows if r.get("sieve_before")]
+    in_twice = lambda n: any(a <= n < b for a, b in twice)
+    below = sorted([n for n in between(surv_sorted, 0, frontier) if not in_twice(n)] +
+                   [n for n in arc.survivors_before if n < frontier])
     milestones = {}
     latest_t = ""
     for n in below:
+        if n in small_primes:
+            continue                     # 2^n - 25 itself is a small prime: nothing to test
         t = resolution_time(arc, n)
         if t is None:
             break
@@ -1152,6 +1330,9 @@ def build(archive_root, out_dir, content_path):
         "removed_by_sieve": total("removed_by_sieve"),
         "pm1_runs": len(arc.pm1),
         "pm1_factors": len({n for n, v in arc.pm1.items() if any(r[3] for r in v)}),
+        # the n P-1 factored that no sieve removed: where a range was sieved again after P-1, the n P-1 factored
+        # below the second sieve's depth count as sieve factors in the shares
+        "pm1_after_sieve": sum(r["pm1"].get("after_sieve", r["pm1"]["factors"]) for r in rows),
         "prp_tests": len(arc.prp),
         "prp_results": sum(len(v) for v in arc.prp.values()),
         "prp_with_proof": arc.proofs,
@@ -1178,7 +1359,13 @@ def build(archive_root, out_dir, content_path):
     }
 
     # ---- primes ----
-    ranks = site.get("ranks", {})
+    ranks = read_ranks(site, notes)
+    for k in ranks["values"]:
+        if int(k) not in arc.prime_records and int(k) not in small_primes:
+            notes.add("PRPTop lists an n that is not a known prime here", f"n = {k}")
+    for n in primes_all:
+        if digits_of(n) >= 10_000 and str(n) not in ranks["values"] and n not in arc.reported:
+            notes.add("known prime of 10,000 digits or more with no Top PRP rank (not on PRPTop yet?)", f"n = {n}")
     prime_notes = site.get("prime_notes", {})
     # who first found each prime: below `below`, someone before this project (PRPTop, or `unknown`)
     disc = site.get("discoverers", {})
@@ -1199,7 +1386,7 @@ def build(archive_root, out_dir, content_path):
             "who": rec.get("who", credit if rec else ""),
             "how": "PRP-3" if rec else "trial division",
             "discoverer": by, "discovered": when,     # first found by, and when (year-month before this project)
-            "rank": ranks.get("values", {}).get(str(n), ""),
+            "rank": ranks["values"].get(str(n), ""),
             "note": prime_notes.get(str(n)) or small_primes.get(n, {}).get("note", ""),
         })
 
@@ -1260,23 +1447,26 @@ def build(archive_root, out_dir, content_path):
     }
     row_lo = [r["lo"] for r in rows]
 
-    def depth_of(n):
-        """How far the sieve had gone for n's range, or None."""
+    def depth_of(n, at_pm1=False):
+        """How far the sieve had gone for n's range, or None; with at_pm1, when P-1 ran there (the first sieve
+        of a range sieved twice)."""
         i = bisect.bisect_right(row_lo, n) - 1
         r = rows[i] if i >= 0 else None
-        return r["sieve"].get("depth") if r and r["lo"] <= n < r["hi"] and r["sieve"] else None
+        if not (r and r["lo"] <= n < r["hi"] and r["sieve"]):
+            return None
+        return ((at_pm1 and r.get("sieve_before")) or r["sieve"]).get("depth")
 
     # P-1 runs on sieve survivors, so every factor it finds should be above the sieve depth of its range
     under = 0
     for f, n, t, b1, b2, who, parts in results:
-        d = depth_of(n)
+        d = depth_of(n, at_pm1=True)
         if d and min(parts) <= d:
             under += 1
             notes.add("P-1 factor at or below the sieve depth of its range", f"n = {n}: {min(parts)} <= {d}")
     pm1_stats["below_sieve_depth"] = under
     if found:
         q, n, t, b1, b2, who, k = min(found)
-        pm1_stats["smallest"] = {**factor_doc(q, n, t, b1, b2, who), "sieve_depth": depth_of(n)}
+        pm1_stats["smallest"] = {**factor_doc(q, n, t, b1, b2, who), "sieve_depth": depth_of(n, at_pm1=True)}
         first_stage = [f for f in found if not f[4]]
         if first_stage:
             pm1_stats["largest_stage1"] = factor_doc(*max(first_stage)[:6])
@@ -1297,15 +1487,21 @@ def build(archive_root, out_dir, content_path):
 
     # ---- the big chart on the Status page: every odd n below 10^7 in columns of 25,000 ----
     prime_set = {n for n, v in arc.prp.items() if any(r[1] in ("P", "R") for r in v)} | set(small_primes)
+    for n in sorted(prime_set & arc.sieve_smallest.keys()):
+        notes.add("known or reported prime with a sieve factor", f"n = {n}: p = {arc.sieve_smallest[n]}")
     factored = {n for n, v in arc.pm1.items() if any(r[3] for r in v)}
     composite = {n for n, v in arc.prp.items() if any(r[1] == "C" for r in v)}
     act_lo, act_hi = active.get("lo", 0), active.get("hi", 0)
-    progress = {"bucket": BUCKET, "state": "", "depth": [], "odd": [], "removed": [], "pm1": [], "comp": [], "prime": [], "open": [],
-                "layers": [], "layer_limit": []}
+    progress = {"bucket": BUCKET, "state": "", "depth": [], "depth_before": [], "odd": [], "removed": [], "pm1": [], "comp": [],
+                "prime": [], "open": [], "layers": [], "layer_limit": []}
     # layers[c][k]: odd n of column c whose smallest factor p has 10^k <= p < 10^(k+1), for p below layer_limit[c]
     # (the sieve depth; 10^7 where nothing is sieved, since any program finds factors that small by itself).
     # Mass Prime Siever ranges count from its checked factors; the rest come from content/sieve_layers.json.
     # Whatever a column has beyond its layers and results: n with no factor below 10^7, not sieved yet.
+    # In a Mass Prime Siever range every n with a sieve factor is in the layers, also one that P-1 or a PRP test
+    # resolved before a later, deeper sieve found its factor; only the n the sieve left count by their results.
+    # depth_before: the first sieve of a column sieved twice (the depth when P-1 and PRP ran there).
+    row_of = {r["lo"]: r for r in rows}
     for lo in range(0, N_MAX, BUCKET):
         hi = lo + BUCKET
         sieved = arc.is_sieved(lo) and arc.is_sieved(hi - 1)
@@ -1313,6 +1509,9 @@ def build(archive_root, out_dir, content_path):
         known = set(between(pm1_sorted, lo, hi)) | set(between(prp_sorted, lo, hi)) | {p for p in small_primes if lo <= p < hi}
         if sieved:
             known |= set(between(surv_sorted, lo, hi))
+        mps_col = sieved and any(a <= lo and hi <= b for a, b in arc.mps_spans)
+        if mps_col:
+            known = {n for n in known if n not in arc.sieve_smallest}
         tally = collections.Counter()
         for n in known:
             if n in prime_set:
@@ -1329,15 +1528,16 @@ def build(archive_root, out_dir, content_path):
             state = "s" if act_lo <= lo < act_hi else "t"
         progress["state"] += state
         progress["depth"].append(depth_of(lo) if sieved else None)
+        first = (row_of.get(lo - lo % ROW) or {}).get("sieve_before") if sieved else None
+        progress["depth_before"].append(first["depth"] if first else None)
         progress["odd"].append(odd)
         progress["removed"].append(odd - len(known) if sieved else 0)
         for k in ("pm1", "comp", "prime", "open"):
             progress[k].append(tally[k])
         col, limit, ly = lo // BUCKET, None, []
-        if sieved and any(a <= lo and hi <= b for a, b in arc.mps_spans):
+        if mps_col:
             limit = depth_of(lo)
-            tal = collections.Counter(decade(arc.sieve_smallest[n]) for n in range(max(lo, 5) | 1, hi, 2)
-                                      if n in arc.sieve_smallest and n not in known)
+            tal = collections.Counter(decade(arc.sieve_smallest[n]) for n in range(max(lo, 5) | 1, hi, 2) if n in arc.sieve_smallest)
             ly = [tal[k] for k in range(max(tal) + 1)] if tal else []
         elif col in static_layers:
             want = depth_of(lo) if sieved else TRIAL_LIMIT
@@ -1375,32 +1575,61 @@ def build(archive_root, out_dir, content_path):
     progress["heat_factors"] = len(found)
 
     # ---- shards ----
-    os.makedirs(os.path.join(out_dir, "n"), exist_ok=True)
-    for old in glob.glob(os.path.join(glob.escape(os.path.join(out_dir, "n")), "*.json")):
-        os.remove(old)
+    for sub in ("n", "f"):
+        os.makedirs(os.path.join(out_dir, sub), exist_ok=True)
+        for old in glob.glob(os.path.join(glob.escape(os.path.join(out_dir, sub)), "*.json")):
+            os.remove(old)
     shard_count = 0
     shard_bytes = 0
+    sieve_factor_count = 0
+    factor_bytes = 0
+
+    def exact(p):
+        return p if p < 2 ** 53 else str(p)   # JSON numbers above 2^53 lose digits in a browser
+    before_sorted = sorted(arc.survivors_before)
     summary["shards"] = []               # the pages fetch only shards that exist
+    summary["factor_files"] = []         # ... and only factor files that exist
     for lo in range(0, N_MAX, SHARD):
         hi = lo + SHARD
         surv = between(surv_sorted, lo, hi)
         pm1 = {str(n): arc.pm1[n] for n in between(pm1_sorted, lo, hi)}
         prp = {str(n): arc.prp[n] for n in between(prp_sorted, lo, hi)}
-        sf = {str(n): arc.sieve_factors[n] for n in between(sf_sorted, lo, hi)}
-        sfu = {k: arc.sieve_factor_by[int(k)] for k in sf if int(k) in arc.sieve_factor_by}
-        pm1f = {}                        # n -> prime factors of a P-1 factor that is their product
+        # the sieve slices over these n: p and n range, when the run ended, who ran it (index in users), whether
+        # it was uploaded, and every checked factor above 10^7 it found (the pages find the smaller ones themselves)
+        slices = []
+        for src in arc.sieve_sources:
+            a, b = max(src["n0"], lo), min(src["n1"], hi)
+            if a >= b:
+                continue
+            x = {"p": [exact(src["p0"]), exact(src["p1"])], "n": [a, b], "end": src["end"], "by": src["by"]}
+            if src["upload"]:
+                x["upload"] = 1
+            if src.get("before"):
+                x["before"] = 1          # the first sieve of a range sieved twice (the old sievers)
+            f = {str(n): [exact(p) for p in ps] for n, ps in sorted(src["f"].items()) if a <= n < b}
+            if f:
+                x["f"] = f
+                sieve_factor_count += sum(len(v) for v in f.values())
+            slices.append(x)
+        pm1f = {}                        # n -> {P-1 factor: its prime factors}, for a factor that is their product
         for k, recs in pm1.items():
-            f = next((r[3] for r in recs if r[3]), "")
-            if splits.get(f):
-                pm1f[k] = splits[f]
-        if not surv and not pm1 and not prp and not sf:
+            parts = {f: splits[f] for r in recs if r[3] for f in str(r[3]).split(",") if splits.get(f)}
+            if parts:
+                pm1f[k] = parts
+        if slices:
+            # a file of its own: it changes only when a sieve slice comes in, the shard with every PRP result
+            path = os.path.join(out_dir, "f", shard_name(lo) + ".json")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump({"lo": lo, "hi": hi, "users": arc.users, "slices": slices}, f, ensure_ascii=False, separators=(",", ":"))
+            summary["factor_files"].append(shard_name(lo))
+            factor_bytes += os.path.getsize(path)
+        if not surv and not pm1 and not prp:
             continue
         doc = {"lo": lo, "hi": hi, "sieved": arc.is_sieved(lo) and arc.is_sieved(hi - 1), "s": surv,
                "pm1": pm1, "prp": prp, "programs": arc.programs, "users": arc.users}
-        if sf:
-            doc["sf"] = sf
-        if sfu:
-            doc["sfu"] = sfu
+        s0 = between(before_sorted, lo, hi)
+        if s0:
+            doc["s0"] = s0               # sieved twice: the survivors of the first sieve
         if pm1f:
             doc["pm1f"] = pm1f
         path = os.path.join(out_dir, "n", shard_name(lo) + ".json")
@@ -1422,7 +1651,7 @@ def build(archive_root, out_dir, content_path):
     sizes = {
         "summary.json": write("summary.json", summary),
         "ranges.json": write("ranges.json", {"row": ROW, "rows": rows}),
-        "primes.json": write("primes.json", {"primes": primes, "rank_date": ranks.get("date")}),
+        "primes.json": write("primes.json", {"primes": primes, "rank_date": ranks["date"], "rank_daily": ranks["daily"]}),
         "sieve.json": write("sieve.json", sieve),
         "progress.json": write("progress.json", progress),
         "site.json": write("site.json", site, pretty=True),
@@ -1445,6 +1674,8 @@ def build(archive_root, out_dir, content_path):
     for row in rows:
         if row["sieved"] and row["untested"]:
             print(f"  {row['lo']/1e6:.1f}M-{row['hi']/1e6:.1f}M: {row['untested']:,} sieve survivors still without a result")
+    print(f"  sieve factors above 10^7: {sieve_factor_count:,} from {len(arc.sieve_sources):,} slice(s), "
+          f"in {len(summary['factor_files'])} factor files ({factor_bytes/1024/1024:.1f} MB)")
     print(f"Wrote {len(sizes)} files ({sum(sizes.values())/1024:.0f} kB) and {shard_count} shards ({shard_bytes/1024/1024:.1f} MB) to {out_dir}")
     notes.report(os.path.join(os.path.dirname(os.path.abspath(out_dir)), "build_report.txt"))
     return summary

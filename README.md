@@ -24,11 +24,15 @@ content/site.json    facts written by hand: plans, sieve assignments, benchmarks
 content/sieve_layers.json   smallest-factor layers of the ranges without Mass Prime Siever output
 content/trial_left.json     odd n in 3.6M–5M with no factor below 10^7 (for ranges sieved in part)
 data/                written by tools/build.py; the pages read only these JSON files
+data/n/<x.x>.json    per 0.1M of n: sieve survivors and every P-1 and PRP record (s0: first-sieve survivors)
+data/f/<x.x>.json    per 0.1M of n: every sieve factor above 10^7, under the slice that found it first
 archive/             local copy of what build.py needs from the project archive (not published)
 archive/pm1_splits.json     prime factors of composite P-1 results, worked out once by build.py
+archive/prptop.json  Top PRP rank of each known prime on PRP Records, read once a day
 tools/sync_archive.py       refreshes archive/ from the archive drive
 tools/build.py       reads archive/, checks it, writes data/
 tools/pull_submissions.py   copies uploads from the Worker into archive/Submissions
+tools/prptop_ranks.py       reads the Top PRP ranks from PRP Records into archive/prptop.json
 tools/auto_update.py        what the scheduled task runs: new uploads -> build -> push data/
 tools/make_pages.py  rebuilds the HTML pages after a change to pages/ or the shared header
 tools/sieve_layers.c        writes content/sieve_layers.json (and the n list for trial_left.py)
@@ -68,7 +72,9 @@ cannot open a path with `~` followed by a digit. `build.py --archive <folder>` r
 On the PC that holds `archive/`, a scheduled task runs `tools/auto_update.py` every 15 minutes while
 someone is logged on. It saves new uploads (`pull_submissions.py --new-only`: two key lists a run when
 nothing is new, about 200 a day, inside the free plan's 1,000 a day), runs `sync_archive.py --back`
-when the archive drive is attached, and stops there if nothing `build.py` reads has changed. Otherwise
+when the archive drive is attached, once a day reads the Top PRP ranks of the known primes from PRP
+Records (`prptop_ranks.py`: one request for the list of 2ⁿ − 25, checked before it is saved; a failed
+read is tried again three hours later), and stops there if nothing `build.py` reads has changed. Otherwise
 it rebuilds `data/`, checks that no known prime, PRP test, P-1 factor, resolved n or sieved range went
 missing (partial sieves included), that no sieve depth shrank and that the frontier did not move back,
 and then commits `data/` alone (message "Update data…", by RP-12000 with GitHub's no-reply address)
@@ -103,12 +109,34 @@ a time. `schtasks /Delete /TN "2n-25 site auto-update"` removes it.
   has its run time shared between them. A range whose slices do not start at p ≤ 7 yet is sieved *in
   part*: its checked factors strike n out and the pages show the p range done, but it counts as sieved
   only once a slice from p ≤ 7 joins up with the rest.
+* **Every factor is kept**, not only the one that struck n out: `data/f/` lists each checked factor
+  above 10⁷ under the slice that found it (its p and n range, when the run ended, who ran it, whether it
+  was uploaded), and the exponent page adds the ones below 10⁷ by trial division. A factor that several
+  slices list is shown once, under an upload that the archive keeps too (so it keeps the uploader's
+  name), else the range folder's own slice, else the earliest other upload.
+* **Ranges sieved twice.** Below n = 3.6 million the old CPU sievers (2ⁿ−25 Siever 1.0 to 3.0) ran
+  first, to depths between 10⁷ and 2³², and P-1 and the PRP tests ran on what they left; Mass Prime
+  Siever 12.0 then sieved the same n again, to 10¹¹. A range folder with both keeps both: the old files
+  are its first sieve (`sieve_before` in `ranges.json`, `s0` in `data/n/`, `depth_before` in
+  `progress.json`), Mass Prime Siever its second (`sieve`). Each factor is credited once, to whoever found
+  it first: one that divides a P-1 factor of the same n stays with P-1; one below the first sieve's depth,
+  of an n the first sieve removed, stays with the first sieve and its date (a slice of its own in
+  `data/f/`, marked `before`); only the rest are listed under the second sieve. Where the first sieve
+  wrote no factor files (`sieve_factors_not_kept` in `content/site.json`: 3.2M to 3.6M), its factors
+  above 10⁷ count as the second sieve's. The report lists any n that the second sieve kept although the
+  first removed it, and any n that the first left although a prime below its depth divides it. A range
+  counts as done on the day of its last P-1 or PRP result, not on the day of the second sieve.
+  `pm1.after_sieve` in `ranges.json` (`pm1_after_sieve` in `summary.json`) counts the n with a P-1
+  factor that the second sieve left; the Ranges page counts the others under the sieve.
+  `sieve_targets` in `content/site.json` sets the target depth for a span of n (10¹¹ below 3.6 million;
+  `sieve_target` everywhere else).
 * **Prime95 results**: duplicate lines, n outside their range folder, unknown work types.
 * **P-1 factors** must divide 2ⁿ − 25 and lie above the sieve depth of their range. When a run finds
   two or more primes at once, Prime95 reports their product; `build.py` splits it by replaying the
   run's P-1 in small steps on that number alone, and keeps the result in `archive/pm1_splits.json`
   (the first build takes about a minute, later ones a few seconds). The exponent page shows the
-  product and its primes, and the statistics count primes.
+  product and its primes, and the statistics count primes. A result line that reports several factors
+  keeps all of them.
 * **Uploads**: a probable prime reported by someone else is shown as *being verified* until its n is
   added to `confirmed_primes` in `content/site.json` (after re-running the test) or a P result for it
   appears in the archive. A claimed probable prime with a prime factor below 10⁶ is ignored.
@@ -119,7 +147,8 @@ a time. `schtasks /Delete /TN "2n-25 site auto-update"` removes it.
   by its factors above 10⁶), or once its id is in `accepted_sieve_uploads` in `content/site.json`;
   otherwise the report lists it. Who found a factor
   above 10⁷ is shown on the exponent page. An upload whose p and n ranges a slice in the archive
-  already covers is skipped, so a result filed in the archive is not counted twice.
+  already covers is not merged a second time, so a result filed in the archive is not counted twice;
+  its factors still carry the uploader's name.
 
 ## Uploads
 

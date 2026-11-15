@@ -196,7 +196,12 @@
     for (i = 0; i < cols; i++) if (p.depth[i]) removed += p.removed[i];
     var days = sum.daily_pm1 || [];
 
-    el('hist-sieve-lede').innerHTML = 'Grey: the sieve, which found every factor below its edge; each siever version went a little deeper. ' +
+    // columns sieved twice: the old sievers first (before P-1 and PRP), then a second, deeper sieve
+    var before = p.depth_before || [], twice = [];
+    for (i = 0; i < cols; i++) if (p.depth[i] && before[i]) twice.push(i);
+    var againText = twice.length ? 'Light grey: a second sieve over ' + S.M(twice[0] * B).replace(/^0M$/, '0') + ' ≤ n &lt; ' + S.M((twice[twice.length - 1] + 1) * B) +
+      ', to ' + S.depth(p.depth[twice[0]]) + ', run after P-1 and the PRP tests; it found again the P-1 factors below its edge, and new ones. ' : '';
+    el('hist-sieve-lede').innerHTML = 'Grey: the sieve, which found every factor below its edge; each siever version went a little deeper. ' + againText +
       (heatCols.length ? 'Violet: the ' + fmt(p.heat_factors) + ' prime factors P-1 found above the sieve for ' + S.M(pm1Lo) + ' ≤ n &lt; ' + S.M(pm1Hi) +
         (days.length ? ', ' + esc(days[0][0]) + ' to ' + esc(days[days.length - 1][0]) : '') + ', by size. ' : '') +
       'The search now sieves deeper instead of running P-1; see the <a href="index.html">Status</a> page for the sieve in progress.';
@@ -212,20 +217,23 @@
     for (dec = 3; dec <= DEC; dec += 3) g.push('<line x1="' + H.L + '" y1="' + r1(Y(dec)) + '" x2="' + H.R + '" y2="' + r1(Y(dec)) + '"></line>');
     o.push('<g class="grid">' + g.join('') + '</g>');
 
-    // the sieve: every factor below the edge is known
-    var fill = '', edge = '', lastEnd = null;
+    // the sieve: every factor below the edge is known. In a column sieved twice, the first sieve is the grey and
+    // the second the lighter band above it, up to the edge.
+    var fill = '', again = '', edge = '', lastEnd = null;
+    var firstOf = function (c) { return before[c] || p.depth[c]; };
     i = 0;
     while (i < cols) {
       if (!p.depth[i]) { i++; lastEnd = null; continue; }
       var j = i;
-      while (j + 1 < cols && p.depth[j + 1] === p.depth[i]) j++;
-      var xa = r1(colX(i)), xb = r1(colX(j + 1)), y = r1(Y(Math.log10(p.depth[i])));
-      fill += 'M' + xa + ' ' + H.B + 'V' + y + 'H' + xb + 'V' + H.B + 'Z';
+      while (j + 1 < cols && p.depth[j + 1] === p.depth[i] && firstOf(j + 1) === firstOf(i)) j++;
+      var xa = r1(colX(i)), xb = r1(colX(j + 1)), y = r1(Y(Math.log10(p.depth[i]))), y0 = r1(Y(Math.log10(firstOf(i))));
+      fill += 'M' + xa + ' ' + H.B + 'V' + y0 + 'H' + xb + 'V' + H.B + 'Z';
+      if (y0 > y) again += 'M' + xa + ' ' + y0 + 'V' + y + 'H' + xb + 'V' + y0 + 'Z';
       edge += (lastEnd === xa ? 'V' + y : 'M' + xa + ' ' + y) + 'H' + xb;
       lastEnd = xb;
       i = j + 1;
     }
-    o.push('<path class="sieved crisp" d="' + fill + '"></path><path class="depth-edge" d="' + edge + '"></path>');
+    o.push('<path class="sieved crisp" d="' + fill + '"></path>' + (again ? '<path class="sieved-again crisp" d="' + again + '"></path>' : ''));
 
     // P-1 factors by size: one cell is a column of n times one bit of p
     var heat = HEAT.map(function () { return ''; });
@@ -239,6 +247,8 @@
       }
     });
     o.push('<g class="crisp">' + heat.map(function (d, c) { return d ? '<path class="heat-' + c + '" d="' + d + '"></path>' : ''; }).join('') + '</g>');
+    // the edge goes over the P-1 cells: where the second sieve went past them, the P-1 factors below it were found again
+    o.push('<path class="depth-edge" d="' + edge + '"></path>');
 
     // axes
     var ax = ['<line class="axis" x1="' + H.L + '" y1="' + H.B + '" x2="' + H.R + '" y2="' + H.B + '"></line>'];
@@ -263,6 +273,7 @@
     host.innerHTML = o.join('');
 
     el('pm1-legend').innerHTML = '<span><i class="key sieved" aria-hidden="true"></i>Sieved: every factor below the edge is known</span>' +
+      (twice.length ? '<span><i class="key sieved-again" aria-hidden="true"></i>Sieved again, after P-1 and PRP</span>' : '') +
       '<span class="swatches">P-1 factors per cell' + HEAT.map(function (lo, c) {
         return ' <i class="key heat-' + c + '" aria-hidden="true"></i>' + heatLabel(c);
       }).join('') + '</span>' +
@@ -278,6 +289,7 @@
         if (p.depth[col]) {
           t.add(fmt(p.removed[col]), 'removed by the sieve, p < ' + S.depth(p.depth[col]), 'sieved');
           t.add(fmt(p.odd[col] - p.removed[col]), 'left after the sieve');
+          if (before[col]) t.note('Sieved twice: to ' + S.depth(before[col]) + ' before P-1 and PRP, then to ' + S.depth(p.depth[col]) + '.');
         } else t.note('Not sieved yet.');
         var hrow = heatBy[col];
         if (!hrow) return;
