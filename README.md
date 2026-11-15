@@ -74,7 +74,8 @@ someone is logged on. It saves new uploads (`pull_submissions.py --new-only`: tw
 nothing is new, about 200 a day, inside the free plan's 1,000 a day), runs `sync_archive.py --back`
 when the archive drive is attached, once a day reads the Top PRP ranks of the known primes from PRP
 Records (`prptop_ranks.py`: one request for the list of 2ⁿ − 25, checked before it is saved; a failed
-read is tried again three hours later), and stops there if nothing `build.py` reads has changed. Otherwise
+read is tried again three hours later), once an hour reads the progress of the Prime95 PRP run on this
+PC (`live_prp.py`, below), and stops there if nothing `build.py` reads has changed. Otherwise
 it rebuilds `data/`, checks that no known prime, PRP test, P-1 factor, resolved n or sieved range went
 missing (partial sieves included), that no sieve depth shrank and that the frontier did not move back,
 and then commits `data/` alone (message "Update data…", by RP-12000 with GitHub's no-reply address)
@@ -86,6 +87,15 @@ while files outside `data/` have uncommitted changes, or while this copy has com
 that are not on GitHub yet, so work on the code is never published by it. Once such work is pushed (or
 undone), the next run catches up. It writes what it did to `auto_update.log` (a problem that keeps
 happening is written once) and keeps its state in `auto_update_state.json`; neither is committed.
+
+`live_prp.py` only reads Prime95's `results.json.txt` (in `Desktop\WMC` of the user running the task):
+it writes, moves or locks nothing in that folder and copies nothing to the archive drive. Of each
+2ⁿ − 25 PRP result it keeps what the pages show (n, result, Res64, FFT length, proof power, program and
+time) in `live/prp_progress.json` here, which is not committed; a last line that Prime95 is still
+writing waits for the next read. `build.py` adds these results to the archive's, for a range whose
+`PRP/results.json.txt` is not in the archive yet; once it is, each test counts once. A probable prime
+among them is shown as being verified until its result is in the archive or n is in
+`confirmed_primes`.
 
 ```
 schtasks /Query /TN "2n-25 site auto-update" /V /FO LIST    # is it there, when did it last run

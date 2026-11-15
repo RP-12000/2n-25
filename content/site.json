@@ -1,5 +1,5 @@
 {
-  "_about": "Hand-written facts and plans for the website. tools/build.py copies this into data/site.json. Edit it when plans change, then rebuild. confirmed_primes: n of probable primes reported in uploads that you have re-tested; until then the site shows them as being verified. accepted_sieve_uploads: ids of uploaded sieve slices (Submissions/<id>/TF) to count toward the sieve depth even though they found fewer factors than expected; their checked factors strike n out either way. status_since: the Status page draws the frontier and PRP results per day from this date; the History page keeps the whole story. credit: the name the project's own results and factors are credited to; factors below 10^7, which any program finds by itself, carry no name. discoverers: who first found each prime below `below` and when (year-month), from PRPTop (Henri & Renaud Lifchitz's PRP Records); a prime below `below` that is not listed is credited to `unknown`; from `below` up, every prime was first found by this project. exponent_start_after: with no n in its address, the Exponent page opens at the first n above this with no known factor. sieve_plan: the sieve stages for the active range; the Sieve page draws the stages not marked Done as planned work. ranks: Top PRP ranks on PRPTop, shown only while archive/prptop.json is missing; on the PC with the archive, tools/auto_update.py reads them again once a day (tools/prptop_ranks.py). sieve_targets: the sieve target of a range other than sieve_target, as {lo, hi, target, note}; the Status, Exponent and Ranges pages compare that range's sieve with it, and note says why. sieve_factors_not_kept: ranges whose first sieve kept no list of the factors it found ({lo, hi, why}); when such a range is sieved again, the factors above 10^7 below the first sieve's depth are credited to the second sieve, the first one to find a record of them.",
+  "_about": "Hand-written facts and plans for the website. tools/build.py copies this into data/site.json. Edit it when plans change, then rebuild. confirmed_primes: n of probable primes reported in uploads, or found by the Prime95 run on this PC (live/), that you have re-tested; until then the site shows them as being verified. accepted_sieve_uploads: ids of uploaded sieve slices (Submissions/<id>/TF) to count toward the sieve depth even though they found fewer factors than expected; their checked factors strike n out either way. status_since: the Status page draws the frontier and PRP results per day from this date; the History page keeps the whole story. credit: the name the project's own results and factors are credited to; factors below 10^7, which any program finds by itself, carry no name. discoverers: who first found each prime below `below` and when (year-month), from PRPTop (Henri & Renaud Lifchitz's PRP Records); a prime below `below` that is not listed is credited to `unknown`; from `below` up, every prime was first found by this project. exponent_start_after: with no n in its address, the Exponent page opens at the first n above this with no known factor. sieve_plan: the sieve stages for the active range; the Sieve page draws the stages not marked Done as planned work. ranks: Top PRP ranks on PRPTop, shown only while archive/prptop.json is missing; on the PC with the archive, tools/auto_update.py reads them again once a day (tools/prptop_ranks.py). sieve_targets: the sieve target of a range other than sieve_target, as {lo, hi, target, note}; the Status, Exponent and Ranges pages compare that range's sieve with it, and note says why. sieve_factors_not_kept: ranges whose first sieve kept no list of the factors it found ({lo, hi, why}); when such a range is sieved again, the factors above 10^7 below the first sieve's depth are credited to the second sieve, the first one to find a record of them.",
   "credit": "Kelvinizer",
   "oeis": "A379020",
   "links": {
@@ -51,28 +51,20 @@
   "active": {
     "lo": 3600000,
     "hi": 5000000,
-    "badge": "Sieving",
+    "badge": "PRP testing",
     "note": "700,000 odd n, first sieved in November 2026. Any prime found here is larger than our record 10^1036183 + 9 (1,036,184 digits)."
   },
   "stages": [
     {
       "state": "done",
       "tag": "1 · done",
-      "title": "Sieve p < 3.5 × 10^13",
-      "where": "Laptop p < 10^13 · OpenCL; Kaggle 10^13 – 3.5 × 10^13 · CUDA",
-      "figure": "47,468 left"
+      "title": "Sieve p < 4 × 10^13",
+      "where": "Laptop p < 10^13 · OpenCL; Kaggle 10^13 – 4 × 10^13 · CUDA",
+      "figure": "47,262 left"
     },
     {
       "state": "next",
       "tag": "2 · running",
-      "title": "Sieve 3.5 × 10^13 → 4 × 10^13",
-      "where": "Kaggle · T4 · CUDA",
-      "figure": "≈ 47,300 left",
-      "p_to": 40000000000000
-    },
-    {
-      "state": "planned",
-      "tag": "3 · next",
       "title": "PRP, smallest n first",
       "where": "Prime95 PRP-3 · ≈ 50 core-minutes each",
       "figure": "≈ 230 tests / day"
@@ -100,8 +92,8 @@
       "p_to": 40000000000000,
       "machine": "Kaggle · T4",
       "backend": "CUDA",
-      "status": "Running",
-      "survivors": "≈ 47,300"
+      "status": "Done",
+      "survivors": "47,262"
     },
     {
       "p_from": 40000000000000,
@@ -307,8 +299,8 @@
       "0 – 3.6M sieved again, to 10^11, with Mass Prime Siever 12.0: 409,246 factors above 10^7 that were not on record before."
     ],
     [
-      "next",
-      "PRP from 3.6M, smallest n first."
+      "2026-11-14",
+      "PRP tests start at 3.6M, smallest n first, with Prime95 on the laptop."
     ]
   ],
   "pause": {

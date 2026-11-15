@@ -396,7 +396,8 @@
     });
     var y0 = Math.max(0, Math.floor((v0 - 1e5) / 2e5) * 2e5);
     var y1 = Math.max(act.hi || 0, Math.ceil((sum.frontier + 1e5) / 2e5) * 2e5);
-    var badge = site.active && site.active.badge ? site.active.badge.toLowerCase() : '';
+    // "Sieving" reads "sieving" after "today ·"; an acronym such as PRP keeps its capitals
+    var badge = site.active && site.active.badge ? site.active.badge.replace(/^[A-Z](?=[a-z])/, function (c) { return c.toLowerCase(); }) : '';
     document.getElementById('since-label').textContent = 'since ' + since;
     document.getElementById('frontier-chart').innerHTML = S.frontierChart(series, {
       d0: d0, d1: d1, y0: y0, y1: y1, yStep: 2e5, today: today, frontier: sum.frontier, frontierDate: sum.frontier_date,

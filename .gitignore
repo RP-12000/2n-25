@@ -16,3 +16,5 @@ auto_update.log.1
 auto_update.lock
 auto_update_state.json
 auto_update_state.json.tmp
+# written by tools/live_prp.py: the progress of the Prime95 PRP run on this PC, read once an hour
+live/

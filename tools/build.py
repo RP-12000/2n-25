@@ -50,6 +50,11 @@ on the archive drive or <a>M-<b>M as in archive/):
                                      it starts below 1000), or when its id is in accepted_sieve_uploads
                                      (content/site.json). An upload that the archive also holds counts once.
 
+Also read: live/prp_progress.json in this folder (or --live), the PRP results of the Prime95 run on this
+PC that tools/live_prp.py reads once an hour, for a range whose PRP/results.json.txt is not in the archive
+yet. A test the archive has as well counts once. A probable prime among them is shown as "being verified"
+until n is in confirmed_primes (content/site.json) or has a P result under Ranges/.
+
 Usage:
   python tools/sync_archive.py      # when the archive drive is attached: refresh archive/
   python tools/build.py             # reads archive/
@@ -81,6 +86,7 @@ BUCKET = 25_000        # one column of the big chart on the Status page
 LOG10_2 = math.log10(2)
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_ARCHIVE = os.path.join(REPO, "archive")  # filled by tools/sync_archive.py
+DEFAULT_LIVE = os.path.join(REPO, "live", "prp_progress.json")  # the Prime95 run on this PC (tools/live_prp.py)
 SPLIT_CACHE = os.path.join(REPO, "archive", "pm1_splits.json")  # composite P-1 factors split into primes
 PRPTOP = os.path.join(REPO, "archive", "prptop.json")  # Top PRP ranks, read once a day by tools/prptop_ranks.py
 MONTHS = {m: i + 1 for i, m in enumerate("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split())}
@@ -856,6 +862,20 @@ class Archive:
             for path in sorted(glob.glob(os.path.join(glob.escape(sub_root), "*", "submission.json"))):
                 self.scan_submission(path)
 
+    def scan_live(self, path):
+        """The PRP results of the Prime95 run on this PC (tools/live_prp.py), after the archive and the uploads,
+        so that a test the archive has too counts once, as the archive's."""
+        if not path or not os.path.exists(path):
+            return
+        try:
+            doc = json.loads(read_text(path))
+        except ValueError:
+            self.notes.add("live PRP results that cannot be read (not used)", path)
+            return
+        for j in doc.get("results") or []:
+            if isinstance(j, dict) and j.get("k") == 1 and j.get("b") == 2 and j.get("c") == -25 and isinstance(j.get("n"), int):
+                self.add_result(j, self.credit, path, live=True)
+
     def old_sieve(self, tf, candidates, pm1, lo):
         """The old sievers' output in TF/: (sieve info, survivors, whether there is a survivor list). The
         largest worktodo_general*.txt is the survivor list; without one, the Candidates/*.txt work lines and the
@@ -1074,13 +1094,14 @@ class Archive:
             if isinstance(j, dict) and j.get("k") == 1 and j.get("b") == 2 and j.get("c") == -25 and isinstance(j.get("n"), int):
                 self.add_result(j, user, path, uploaded=True)
 
-    def add_result(self, j, user, where, uploaded=False):
+    def add_result(self, j, user, where, uploaded=False, live=False):
         n = j["n"]
         wt = str(j.get("worktype", ""))
         ts = str(j.get("timestamp", ""))
         key = (n, wt, ts, j.get("status"), j.get("res64"), tuple(j.get("factors") or ()))
         if key in self.seen:
-            self.notes.add("duplicate result line", f"{where}: n = {n}")
+            if not live:                  # a live result that reached the archive since is no news
+                self.notes.add("duplicate result line", f"{where}: n = {n}")
             return
         self.seen.add(key)
         if n % 2 == 0 or n >= N_MAX:
@@ -1110,15 +1131,17 @@ class Archive:
         elif wt.startswith("PRP"):
             status = j.get("status")
             proof = j.get("proof") or {}
-            if status == "P" and uploaded and (p := small_factor(n)):
-                self.notes.add("upload reports a probable prime although a small prime divides 2^n - 25 (line ignored)",
+            if status == "P" and (uploaded or live) and (p := small_factor(n)):
+                self.notes.add("a probable prime reported although a small prime divides 2^n - 25 (line ignored)",
                                f"{where}: n = {n}, p = {p}, by {user}")
                 return
-            if status == "P" and uploaded and n not in self.confirmed and n not in self.prime_records:
-                # an uploaded probable prime is listed only after the project confirms it
+            if status == "P" and (uploaded or live) and n not in self.confirmed and n not in self.prime_records:
+                # a probable prime from an upload or from the live Prime95 run is listed once the project confirms it
                 status = "R"
                 self.reported[n] = user
-                self.notes.add("probable prime reported in an upload: re-test it, then add n to confirmed_primes in content/site.json",
+                self.notes.add("probable prime reported in an upload: re-test it, then add n to confirmed_primes in content/site.json"
+                               if uploaded else "probable prime in the live Prime95 results: check it, then put its result in the "
+                               "range's PRP/results.json.txt or add n to confirmed_primes in content/site.json",
                                f"{where}: n = {n}, by {user}")
             if proof:
                 self.proofs += 1
@@ -1154,7 +1177,7 @@ def between(sorted_list, lo, hi):
     return sorted_list[bisect.bisect_left(sorted_list, lo):bisect.bisect_left(sorted_list, hi)]
 
 
-def build(archive_root, out_dir, content_path):
+def build(archive_root, out_dir, content_path, live_path=None):
     t0 = time.time()
     notes = Notes()
     with open(content_path, encoding="utf-8") as f:
@@ -1172,6 +1195,7 @@ def build(archive_root, out_dir, content_path):
     overrides = {int(k): v for k, v in site.get("range_overrides", {}).items()}
     arc.depth_overrides = {lo: int(v["sieve_depth"]) for lo, v in overrides.items() if v.get("sieve_depth")}
     arc.scan()
+    arc.scan_live(live_path)
     splits = split_factors(arc.factors, notes)
 
     small_primes = {p["n"]: p for p in site.get("small_primes", [])}
@@ -1689,9 +1713,10 @@ def main():
     ap.add_argument("--archive", default=DEFAULT_ARCHIVE, help="copy of the 2^n-25 project folder (contains Ranges); default archive/")
     ap.add_argument("--out", default=os.path.join(REPO, "data"), help="where to write the JSON files")
     ap.add_argument("--content", default=os.path.join(REPO, "content", "site.json"), help="hand-written facts and plans")
+    ap.add_argument("--live", default=DEFAULT_LIVE, help="PRP results of the Prime95 run on this PC (tools/live_prp.py); default live/prp_progress.json")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
-    build(args.archive, args.out, args.content)
+    build(args.archive, args.out, args.content, args.live)
 
 
 if __name__ == "__main__":

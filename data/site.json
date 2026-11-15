@@ -50,28 +50,20 @@
  "active": {
   "lo": 3600000,
   "hi": 5000000,
-  "badge": "Sieving",
+  "badge": "PRP testing",
   "note": "700,000 odd n, first sieved in November 2026. Any prime found here is larger than our record 10^1036183 + 9 (1,036,184 digits)."
  },
  "stages": [
   {
    "state": "done",
    "tag": "1 · done",
-   "title": "Sieve p < 3.5 × 10^13",
-   "where": "Laptop p < 10^13 · OpenCL; Kaggle 10^13 – 3.5 × 10^13 · CUDA",
-   "figure": "47,468 left"
+   "title": "Sieve p < 4 × 10^13",
+   "where": "Laptop p < 10^13 · OpenCL; Kaggle 10^13 – 4 × 10^13 · CUDA",
+   "figure": "47,262 left"
   },
   {
    "state": "next",
    "tag": "2 · running",
-   "title": "Sieve 3.5 × 10^13 → 4 × 10^13",
-   "where": "Kaggle · T4 · CUDA",
-   "figure": "≈ 47,300 left",
-   "p_to": 40000000000000
-  },
-  {
-   "state": "planned",
-   "tag": "3 · next",
    "title": "PRP, smallest n first",
    "where": "Prime95 PRP-3 · ≈ 50 core-minutes each",
    "figure": "≈ 230 tests / day"
@@ -99,8 +91,8 @@
    "p_to": 40000000000000,
    "machine": "Kaggle · T4",
    "backend": "CUDA",
-   "status": "Running",
-   "survivors": "≈ 47,300"
+   "status": "Done",
+   "survivors": "47,262"
   },
   {
    "p_from": 40000000000000,
@@ -306,8 +298,8 @@
    "0 – 3.6M sieved again, to 10^11, with Mass Prime Siever 12.0: 409,246 factors above 10^7 that were not on record before."
   ],
   [
-   "next",
-   "PRP from 3.6M, smallest n first."
+   "2026-11-14",
+   "PRP tests start at 3.6M, smallest n first, with Prime95 on the laptop."
   ]
  ],
  "pause": {

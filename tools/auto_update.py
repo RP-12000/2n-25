@@ -8,6 +8,8 @@ README.md). Each run:
   2. when the archive drive is attached, copies new archive files both ways (tools/sync_archive.py --back);
   3. once a day (UTC), reads the Top PRP ranks of the known primes from PRP Records into
      archive/prptop.json (tools/prptop_ranks.py); after a failed read it tries again a few hours later;
+     once an hour, reads the progress of the Prime95 PRP run on this PC into live/prp_progress.json
+     (tools/live_prp.py: it only reads Prime95's results.json.txt and copies nothing to the archive drive);
   4. stops here if nothing that tools/build.py reads has changed since the last published build;
   5. rebuilds data/ (tools/build.py);
   6. checks the new data against the published data: no known prime, PRP test, P-1 factor, resolved n,
@@ -36,6 +38,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -48,6 +51,8 @@ STATE = os.path.join(REPO, "auto_update_state.json")
 LOCK = os.path.join(REPO, "auto_update.lock")
 LOCK_STALE_S = 2 * 3600          # a lock older than this was left by a run that died
 RANKS_RETRY_S = 3 * 3600         # after a failed read of the PRPTop ranks, wait this long before the next
+LIVE = os.path.join(REPO, "live")  # the progress of the Prime95 run on this PC (tools/live_prp.py), not committed
+LIVE_EVERY_S = 3600              # read it once an hour
 LOG_MAX_BYTES = 1_000_000
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0   # CREATE_NO_WINDOW: no console flashing under pyw
 MARK = "Made by tools/auto_update.py"                 # last line of every commit this script makes
@@ -152,9 +157,9 @@ def write_state(state):
 
 
 def inputs_fingerprint():
-    """Everything tools/build.py reads: archive/ (not its own cache), content/ and the build script."""
+    """Everything tools/build.py reads: archive/ (not its own cache), content/, live/ and the build script."""
     h = hashlib.sha256()
-    for root in (ARCHIVE, os.path.join(REPO, "content")):
+    for root in (ARCHIVE, os.path.join(REPO, "content"), LIVE):
         for folder, dirs, files in os.walk(root, followlinks=True):
             dirs.sort()
             for name in sorted(files):
@@ -415,6 +420,7 @@ def step(args, log, state):
         else:
             log.clear("sync_problem")
     refresh_ranks(log, state)
+    live_new = refresh_live(log, state)
     after = archive_files()
     new_files = sorted({x[0] for x in after - before})
     new_uploads = sorted({p.split("/")[1] for p in new_files if p.startswith("Submissions/")})
@@ -427,6 +433,7 @@ def step(args, log, state):
         return                                            # same as a build that was held back
     log(f"new input: {len(new_files)} archive file(s) added or changed" +
         (f", uploads {', '.join(new_uploads)}" if new_uploads else "") +
+        (f", {live_new} new PRP result(s) from Prime95" if live_new else "") +
         ("" if attached else " (archive drive not attached)") +
         (", data/ had changes" if data_dirty else ""))
 
@@ -470,9 +477,13 @@ def step(args, log, state):
     title = "Update data"
     if new_uploads:
         title += f": {len(new_uploads)} new upload(s)"
+    elif live_new:
+        title += f": {live_new} new PRP result(s)"
     body = []
     if new_uploads:
         body.append("Uploads: " + ", ".join(new_uploads))
+    if live_new:
+        body.append(f"PRP results read from the Prime95 run: {live_new} new")
     if new_files:
         body.append(f"Archive files added or changed: {len(new_files)}")
     if "prptop.json" in new_files:
@@ -508,6 +519,25 @@ def refresh_ranks(log, state):
     line = (out.strip().splitlines() or [""])[-1]
     if "ranks changed" in line or "first read" in line:
         log(line)
+
+
+def refresh_live(log, state):
+    """Once an hour, the progress of the Prime95 run on this PC (tools/live_prp.py only reads its results file).
+    Returns how many results were new."""
+    if time.time() - state.get("live_try", 0) < LIVE_EVERY_S:
+        return 0
+    state["live_try"] = time.time()
+    code, out = tool("live_prp.py", timeout=300)
+    if code:
+        log.once("live_problem", "live_prp.py could not read the Prime95 results; will try again in an hour:\n" + tail(out, 4))
+        return 0
+    log.clear("live_problem")
+    line = (out.strip().splitlines() or [""])[-1]
+    m = re.search(r"([\d,]+) new", line)
+    new = int(m.group(1).replace(",", "")) if m else 0
+    if new:
+        log(line)
+    return new
 
 
 def default_source():
