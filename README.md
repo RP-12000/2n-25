@@ -25,7 +25,7 @@ content/sieve_layers.json   smallest-factor layers of the ranges without Mass Pr
 content/trial_left.json     odd n in 3.6M–5M with no factor below 10^7 (for ranges sieved in part)
 data/                written by tools/build.py; the pages read only these JSON files
 data/n/<x.x>.json    per 0.1M of n: sieve survivors and every P-1 and PRP record (s0: first-sieve survivors)
-data/f/<x.x>.json    per 0.1M of n: every sieve factor above 10^7, under the slice that found it first
+data/f/<x.x>.json    per 0.1M of n: every sieve run over those n, and every sieve factor above 10^7 under the run that found it first
 archive/             local copy of what build.py needs from the project archive (not published)
 archive/pm1_splits.json     prime factors of composite P-1 results, worked out once by build.py
 archive/prptop.json  Top PRP rank of each known prime on PRP Records, read once a day
@@ -124,6 +124,12 @@ a time. `schtasks /Delete /TN "2n-25 site auto-update"` removes it.
   was uploaded), and the exponent page adds the ones below 10⁷ by trial division. A factor that several
   slices list is shown once, under an upload that the archive keeps too (so it keeps the uploader's
   name), else the range folder's own slice, else the earliest other upload.
+* **Every sieve run is listed**: each slice in `data/f/` also carries its run from the siever log
+  (`prog`, start `st`, run time `s` in seconds, and `rn`, all the n the run sieved), so the exponent
+  page's History lists one row per run, the way mersenne.ca lists trial factoring. A run split into
+  several uploads or range folders is one entry per file. The old sievers' slices list their stations
+  in `runs`. An old `log.txt` holds every launch of its task, and the total each launch prints counts
+  that launch only, so the run time adds up the launches.
 * **Ranges sieved twice.** Below n = 3.6 million the old CPU sievers (2ⁿ−25 Siever 1.0 to 3.0) ran
   first, to depths between 10⁷ and 2³², and P-1 and the PRP tests ran on what they left; Mass Prime
   Siever 12.0 then sieved the same n again, to 10¹¹. A range folder with both keeps both: the old files

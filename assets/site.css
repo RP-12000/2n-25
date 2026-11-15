@@ -134,6 +134,7 @@ textarea.input { height: auto; min-height: 120px; padding: 10px; line-height: 1.
 .btn.ghost { background: var(--surface); color: var(--ink-2); border-color: var(--line-3); }
 .btn.ghost:hover { color: var(--ink); border-color: var(--axis); opacity: 1; }
 .btn[disabled] { opacity: 0.45; cursor: default; }
+.btn.q { width: 28px; height: 28px; padding: 0; border-radius: 50%; font: 600 13px var(--mono); }
 .page { padding-block: 28px 56px; display: flex; flex-direction: column; gap: 24px; }
 .site-footer { border-top: 1px solid var(--line); background: var(--surface); }
 .site-footer .bar { padding-block: 20px 28px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 24px; font-size: 12.5px; color: var(--muted); }
@@ -471,6 +472,11 @@ table.data td.wrap.num { min-width: 120px; }
 .tiles.in-card .tile { background: var(--surface-2); border-color: var(--line-2); }
 .tile .s a { white-space: nowrap; }
 table.data td.top { vertical-align: top; }
+/* exponent page history: the sieve runs, then P-1 and PRP */
+.hist-sec { margin-top: 14px; }
+.hist-sec h3 + .small { margin-top: 2px; }
+.hist-sec .table-wrap { margin-top: 10px; }
+table.data.hist-sieve td { line-height: 1.5; }
 table.data td.prod b { font-weight: 600; }
 table.data td.prod .parts { display: block; margin-top: 3px; font-size: 12.5px; color: var(--muted); }
 .tiles.in-card { grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); }

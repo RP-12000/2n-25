@@ -235,8 +235,47 @@ def n_from_work_lines(path):
     return found
 
 
+def origin_span(origin):
+    """The n range an old siever's origin.txt names, as (n0, n1) with n1 left out: '3200000 3266666 25 ...' and
+    '0 200000' include both ends; 'Min exponent=2400000|Field size=200000' or '...|Max exponent=3200000'."""
+    m = re.search(r"Min exponent=(\d+)", origin)
+    if m:
+        n0 = int(m.group(1))
+        top, size = re.search(r"Max exponent=(\d+)", origin), re.search(r"Field size=(\d+)", origin)
+        return (n0, int(top.group(1)) + 1) if top else (n0, n0 + int(size.group(1))) if size else None
+    nums = re.findall(r"\d+", origin)
+    return (int(nums[0]), int(nums[1]) + 1) if len(nums) >= 2 else None
+
+
+def old_log_seconds(lines):
+    """Run time in seconds of an old siever's log.txt. Every launch appends to the log, and the "Total time elapsed"
+    a launch prints counts that launch only, so a task stopped and started again is the sum of its launches: each
+    one its own printed total, or else from its "Starting 2^n-25 Siever" line to its last time stamp."""
+    launches = []          # [first stamp, last stamp, printed seconds]
+    for line in lines:
+        t = log_time(line)
+        if re.search(r"\] Starting 2\^n-25 Siever", line):
+            launches.append([t, t, None])
+            continue
+        if not launches:
+            continue
+        if t:
+            launches[-1][0] = launches[-1][0] or t
+            launches[-1][1] = t
+        m = re.search(r"Total time elapsed (?:throughout|in) this task: (\d+)ms", line)
+        if m:
+            launches[-1][2] = int(m.group(1)) / 1000
+    if not launches:
+        totals = re.findall(r"Total time elapsed (?:throughout|in) this task: (\d+)ms", "\n".join(lines))
+        return int(totals[-1]) / 1000 if totals else 0
+    stamp = lambda x: datetime.datetime.strptime(x, "%Y-%m-%d %H:%M:%S")
+    return sum(s if s is not None else (stamp(b) - stamp(a)).total_seconds() if a and b else 0 for a, b, s in launches)
+
+
 def sieve_info(tf_dir, notes):
-    info = {"depth": None, "program": None, "start": None, "end": None, "cpu_s": 0, "stations": 0}
+    """The old sievers' TF folder: depth, program, start, end and run time over all its stations, and each
+    station's own run in "runs" (its n range from origin.txt, start, end, seconds and program)."""
+    info = {"depth": None, "program": None, "start": None, "end": None, "cpu_s": 0, "stations": 0, "runs": []}
     if not os.path.isdir(tf_dir):
         return info
     if os.path.exists(os.path.join(tf_dir, "origin.txt")):
@@ -256,6 +295,9 @@ def sieve_info(tf_dir, notes):
                 except ValueError:
                     notes.add("unreadable override.txt", override)
         origin_path = os.path.join(st, "origin.txt")
+        run = {"name": "" if st == tf_dir else os.path.basename(st), "span": None, "start": None, "end": None, "s": 0, "program": None}
+        if os.path.exists(origin_path):
+            run["span"] = origin_span(read_text(origin_path))
         if depth is None and os.path.exists(origin_path):
             origin = read_text(origin_path)
             m = re.search(r"Max sieve=(\d+)", origin)
@@ -267,12 +309,14 @@ def sieve_info(tf_dir, notes):
                     depth = int(parts[3])
         if depth:
             depths.append(depth)
+            run["depth"] = depth
         log_path = os.path.join(st, "log.txt")
         if os.path.exists(log_path):
             lines = read_text(log_path).splitlines()
             if lines:
                 m = re.search(r"Starting (.*)$", lines[0])
                 programs.append(m.group(1).strip() if m else lines[0].strip())
+                run["program"] = program_name(programs[-1])
                 first = log_time(lines[0])
                 last = None
                 for line in reversed(lines):
@@ -283,9 +327,12 @@ def sieve_info(tf_dir, notes):
                     starts.append(first)
                 if last:
                     ends.append(last)
-                totals = re.findall(r"Total time elapsed (?:throughout|in) this task: (\d+)ms", "\n".join(lines))
-                if totals:
-                    cpu_ms += int(totals[-1])
+                run["start"], run["end"] = first, last
+                secs = old_log_seconds(lines)
+                if secs:
+                    cpu_ms += secs * 1000
+                    run["s"] = round(secs)
+        info["runs"].append(run)
     info["stations"] = len(stations)
     info["depth"] = max(depths) if depths else None
     info["program"] = program_name(programs[0]) if programs else None
@@ -614,6 +661,15 @@ def mps_log(folder):
             "program": "Mass Prime Siever " + (version.group(1) if version else "12.0")}
 
 
+def run_key(e):
+    """One sieve run, however many range folders or uploads hold a piece of it: its siever.log (program, start,
+    end, seconds). None when there is no log."""
+    g = e.get("log") or {}
+    if not (g.get("start") or g.get("end") or g.get("wall_s")):
+        return None
+    return (g.get("program") or "Mass Prime Siever 12.0", g.get("start") or "", g.get("end") or "", round(float(g.get("wall_s") or 0)))
+
+
 def check_mps(entries, lo, hi, notes):
     """Merge Mass Prime Siever slices for the odd n in [lo, hi).
 
@@ -814,6 +870,7 @@ class Archive:
         self.proofs = 0
         self.prime_records = {}
         self.sieve_sources = []              # sieve slices, each with every checked factor above TRIAL_LIMIT it found
+        self.run_spans = {}                  # run_key -> (n0, n1): every n a sieve run covered, over all its pieces
         self.sieve_smallest = {}             # n -> smallest checked Mass Prime Siever factor, any size
         self.mps_spans = []                  # [(lo, hi)] rows sieved by Mass Prime Siever
         self.accepted_uploads = set()        # uploaded sieve slices to count toward the depth (content/site.json)
@@ -1037,7 +1094,9 @@ class Archive:
         if first:
             depth, old = first["info"]["depth"], first["survivors"]
             src = {"p0": 2, "p1": depth, "n0": lo, "n1": hi, "end": first["info"]["end"] or None,
-                   "by": self.index(self.users, self.credit), "upload": False, "before": True, "f": {}}
+                   "by": self.index(self.users, self.credit), "upload": False, "before": True, "f": {},
+                   "prog": first["info"]["program"], "st": first["info"]["start"], "s": first["info"]["cpu_s"], "span": (lo, hi),
+                   "runs": [r for r in first["info"].get("runs", []) if r["span"]]}
             self.sieve_sources.append(src)
             if first["kept"]:
                 for n in sorted(checked):
@@ -1051,6 +1110,10 @@ class Archive:
         order = (sorted(kept, key=lambda e: (when(e), e["upload"])) + mps +
                  sorted(extra, key=lambda e: (when(e), e["upload"])))
         for e in order:
+            k = run_key(e)
+            if k:
+                span = self.run_spans.get(k)
+                self.run_spans[k] = (min(span[0], e["n0"]), max(span[1], e["n1"])) if span else (e["n0"], e["n1"])
             if id(e) in found:
                 listed = found[id(e)]
             else:
@@ -1068,8 +1131,11 @@ class Archive:
             key = (e["p0"], e["p1"], max(e["n0"], lo), min(e["n1"], hi))
             src = listed_runs.get(key)
             if src is None:
+                g = e.get("log") or {}
                 src = {"p0": key[0], "p1": key[1], "n0": key[2], "n1": key[3], "end": when(e) or None,
-                       "by": self.index(self.users, e.get("who") or self.credit), "upload": "upload" in e, "f": {}}
+                       "by": self.index(self.users, e.get("who") or self.credit), "upload": "upload" in e, "f": {},
+                       "prog": g.get("program") or "Mass Prime Siever 12.0", "st": g.get("start") or None,
+                       "s": round(float(g.get("wall_s") or 0)), "key": k}
                 listed_runs[key] = src
                 self.sieve_sources.append(src)
             for n, ps in listed.items():
@@ -1626,6 +1692,22 @@ def build(archive_root, out_dir, content_path, live_path=None):
             if a >= b:
                 continue
             x = {"p": [exact(src["p0"]), exact(src["p1"])], "n": [a, b], "end": src["end"], "by": src["by"]}
+            # the run: program, start, seconds, and the n it covered in all (rn; Per n on the page shares the time out)
+            if src.get("prog"):
+                x["prog"] = src["prog"]
+            if src.get("st"):
+                x["st"] = src["st"]
+            if src.get("s"):
+                x["s"] = src["s"]
+            span = src.get("span") or arc.run_spans.get(src.get("key"))
+            if span:
+                x["rn"] = [span[0], span[1]]
+            runs = [r for r in src.get("runs") or [] if r["span"][0] < b and r["span"][1] > a]
+            if runs:
+                # the old sievers' stations over these n, each with its own n range and run
+                x["runs"] = [{k: v for k, v in (("name", r["name"]), ("n", list(r["span"])), ("st", r["start"]), ("end", r["end"]),
+                                                ("s", r["s"]), ("prog", r["program"]), ("depth", r.get("depth"))) if v}
+                             for r in runs]
             if src["upload"]:
                 x["upload"] = 1
             if src.get("before"):
@@ -1634,7 +1716,27 @@ def build(archive_root, out_dir, content_path, live_path=None):
             if f:
                 x["f"] = f
                 sieve_factor_count += sum(len(v) for v in f.values())
-            slices.append(x)
+            same = None
+            if src.get("key"):
+                # the same run listed twice here (an upload split by n, and the range folder's copy of the run):
+                # one entry over all its n
+                same = next((y for y in slices if y.get("_run") == (src["key"], x["p"][0], x["p"][1]) and
+                             a <= y["n"][1] and y["n"][0] <= b), None)
+            if same is None:
+                if src.get("key"):
+                    x["_run"] = (src["key"], x["p"][0], x["p"][1])
+                slices.append(x)
+                continue
+            same["n"] = [min(same["n"][0], a), max(same["n"][1], b)]
+            if f:
+                both = same.setdefault("f", {})
+                for k, ps in f.items():
+                    both[k] = sorted(set(both.get(k, [])) | set(ps), key=int)
+                same["f"] = dict(sorted(both.items(), key=lambda kv: int(kv[0])))
+            if x.get("upload"):
+                same["upload"] = 1
+        for x in slices:
+            x.pop("_run", None)
         pm1f = {}                        # n -> {P-1 factor: its prime factors}, for a factor that is their product
         for k, recs in pm1.items():
             parts = {f: splits[f] for r in recs if r[3] for f in str(r[3]).split(",") if splits.get(f)}

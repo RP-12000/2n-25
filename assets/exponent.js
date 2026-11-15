@@ -574,9 +574,12 @@
     return fs.map(function (x) { return S.fmtBig(x[0]) + (x[1] > 1 ? S.sup(x[1]) : ''); }).join(' × ');
   }
 
+  // log2 of a factor given as a decimal string (it may be beyond 2^53)
+  function bitsOf(s) { return s.length > 15 ? Math.log2(Number(s.slice(0, 15))) + (s.length - 15) * Math.log2(10) : Math.log2(Number(s)); }
+
   function factorRow(pStr, date, how, who, bound) {
     var p = BigInt(pStr);
-    var bits = (pStr.length > 15 ? Math.log2(Number(pStr.slice(0, 15))) + (pStr.length - 15) * Math.log2(10) : Math.log2(Number(pStr))).toFixed(3);
+    var bits = bitsOf(pStr).toFixed(3);
     var row = { p: S.fmtBig(pStr), digits: pStr.length, bits: bits, date: date, how: how, who: who, pm1: '—', b1: '—', b2: '—' };
     if (!S.isProbablePrime(p)) {
       row.pm1 = 'composite factor';
@@ -593,7 +596,6 @@
 
   function paintFactors(n, info, row) {
     var kind = info.kind, out = [], sum = '', text = '';
-    var bitsOf = function (s) { return s.length > 15 ? Math.log2(Number(s.slice(0, 15))) + (s.length - 15) * Math.log2(10) : Math.log2(Number(s)); };
     if (kind === 'p1') {
       var bitsKnown = 0, primes = p1Primes(info.p1);
       info.p1.forEach(function (x) {
@@ -692,9 +694,148 @@
       : fmt(all.length) + ' factors, listed above' + (k === all.length ? ' · all already known' : k ? ' · ' + fmt(k) + ' already known' : '');
     return [stamp(row.sieve.end), 'Sieve', esc(S.prog(row.sieve.program)) || '—', 'every p &lt; ' + S.depth(depth), result];
   }
+  /* ---------- history ---------- */
+  // odd n (n ≥ 5) in [a, b)
+  function oddIn(a, b) { return Math.max(0, Math.floor(b / 2) - Math.floor(Math.max(a, 5) / 2)); }
+  function sig3(x) { return x >= 100 ? x.toFixed(0) : x >= 10 ? x.toFixed(1) : x.toFixed(2); }
+  // run time: 49 s, 32 min 49 s, 8 h 50 min
+  function runTime(s) {
+    if (!(s > 0)) return '—';
+    s = Math.round(s);
+    if (s < 60) return s + ' s';
+    if (s < 3600) return Math.floor(s / 60) + ' min' + (s % 60 ? ' ' + (s % 60) + ' s' : '');
+    var h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
+    if (m === 60) { h += 1; m = 0; }
+    return fmt(h) + ' h' + (m ? ' ' + m + ' min' : '');
+  }
+  // one n's share of a run: 45.5 ms, 1.13 s
+  function perN(s) {
+    if (!(s > 0)) return '—';
+    return s < 1e-3 ? sig3(s * 1e6) + ' µs' : s < 1 ? sig3(s * 1e3) + ' ms' : s < 60 ? sig3(s) + ' s' : sig3(s / 60) + ' min';
+  }
+  // a p bound, exactly: 2, 10⁷, 2³², 1.25×10¹³, 2.4375×10¹³
+  function pText(v) {
+    v = Number(v);
+    if (v < 1e4) return fmt(v);
+    var d = S.depth(v);
+    if (/^2[⁰¹²³⁴⁵⁶⁷⁸⁹]+$/.test(d)) return d;
+    var e = Math.floor(Math.log10(v) + 1e-9), m = Number((v / Math.pow(10, e)).toPrecision(6));
+    return (m === 1 ? '' : m + '×') + '10' + S.sup(e);
+  }
+  // the n a run sieved: 3.6M – 5M, or to the unit where a station's block does not end on a round number
+  function blockText(b) {
+    var round = function (x) { return x % 100000 < 2; };   // an old origin.txt names both ends: 0 200000
+    return round(b[0]) && round(b[1]) ? S.rangeLabel(b[0] - b[0] % 100000, b[1] - b[1] % 100000) : fmt(b[0]) + ' – ' + fmt(b[1] - 1);
+  }
+  // "Kelvinizer - w2g0": who sent the run, and the computer it ran on
+  function whoAndComputer(h) {
+    h = String(h || ctx.site.credit);
+    var i = h.indexOf(' - ');
+    return i > 0 ? [h.slice(0, i), h.slice(i + 3)] : [h, ''];
+  }
+  function runKey(x) { return [x.p[0], x.p[1], x.end || '', x.before ? 1 : 0].join('|'); }
+
+  /* Every sieve run over n, from the slices of data/f/<x.x>.json that cover it, smallest p first; a slice the old
+     sievers ran as several stations gives the stations whose n range holds n. Each run lists the factors of n it
+     found: a run of the old sievers only those it kept, any other run every known factor in its p range, with
+     what found it first when that was another run or P-1. */
+  function sieveRuns(n, info, row) {
+    var ff = info.ff, users = (ff && ff.users) || [], runs = [], seen = {};
+    ((ff && ff.slices) || []).forEach(function (x) {
+      var k = runKey(x);
+      if (!(x.n[0] <= n && n < x.n[1]) || seen[k]) return;   // one run listed twice counts once
+      seen[k] = true;
+      var h = whoAndComputer(users[x.by]);
+      var base = { key: k, who: h[0], computer: h[1], before: !!x.before, p: [Number(x.p[0]), Number(x.p[1])],
+        pb: [BigInt(String(x.p[0])), BigInt(String(x.p[1]))],
+        prog: x.prog || (x.before ? (info.before || {}).program : ((row && (row.sieve || row.sieve_part)) || {}).program) || '',
+        st: x.st, end: x.end, s: x.s, block: x.rn || x.n };
+      var st = (x.runs || []).filter(function (r) { return r.n && r.n[0] <= n && n < r.n[1]; });
+      if (!st.length) runs.push(base);
+      st.forEach(function (r) {
+        var top = r.depth ? Number(r.depth) : base.p[1];
+        runs.push(Object.assign({}, base, { computer: r.name || base.computer, prog: r.prog || base.prog, st: r.st, end: r.end || base.end,
+          s: r.s, block: r.n, p: [base.p[0], top], pb: [base.pb[0], BigInt(String(r.depth || x.p[1]))] }));
+      });
+    });
+    var known = (info.factors || []).map(function (f) { return { p: f.p, src: f.src }; });
+    (info.p1 || []).forEach(function (x) {
+      (x.parts || [x.F]).forEach(function (q) { known.push({ p: String(q), p1: x.rec }); });
+    });
+    runs.forEach(function (r) {
+      r.found = known.filter(function (f) {
+        if (r.before) return !!f.src && runKey(f.src) === r.key;   // the old sievers kept only some of their factors
+        var q = BigInt(f.p);
+        return q >= r.pb[0] && q < r.pb[1];
+      }).map(function (f) {
+        var first = f.p1 ? (!r.end || String(f.p1[0]) < String(r.end) ? 'P-1, ' + S.day(f.p1[0]) : '')
+          : f.src && runKey(f.src) !== r.key ? (f.src.before ? 'the first sieve, ' + S.day(f.src.end) : 'the run of ' + S.day(f.src.end)) : '';
+        return { p: f.p, first: first };
+      });
+    });
+    runs.sort(function (a, b) { return a.p[0] - b.p[0] || (String(a.end) < String(b.end) ? -1 : String(a.end) > String(b.end) ? 1 : 0); });
+    return runs;
+  }
+  // "every p below 5×10¹³", or the p ranges a row not sieved from p = 2 yet has been sieved for
+  function coverage(runs) {
+    var m = [];
+    runs.map(function (r) { return [r.p[0], r.p[1]]; }).sort(function (a, b) { return a[0] - b[0]; }).forEach(function (x) {
+      var l = m[m.length - 1];
+      if (l && x[0] <= l[1]) l[1] = Math.max(l[1], x[1]); else m.push([x[0], x[1]]);
+    });
+    if (m.length === 1 && m[0][0] <= 7) return 'every p below ' + pText(m[0][1]);
+    return 'p from ' + m.map(function (x) { return pText(x[0]) + ' to ' + pText(x[1]); }).join(' and from ');
+  }
+  /* The sieve runs as a table, the way mersenne.ca lists trial factoring: one row per run, with its p range, the
+     factors of n it found, and its run time; a run sieves a whole block of n at once, so each n gets a share. */
+  function sieveTable(info, runs) {
+    var progs = [];
+    runs.forEach(function (r) { if (r.prog && progs.indexOf(r.prog) < 0) progs.push(r.prog); });
+    var showProg = progs.length > 1, showPC = runs.some(function (r) { return r.computer; });
+    var anyKnown = runs.some(function (r) { return r.found.some(function (f) { return f.first; }); });
+    var total = 0, share = 0, found = {};
+    var body = runs.map(function (r) {
+      var odd = r.block ? oddIn(r.block[0], r.block[1]) : 0, mine = r.s && odd ? r.s / odd : 0;
+      total += r.s || 0;
+      share += mine;
+      r.found.forEach(function (f) { found[f.p] = true; });
+      var lines = function (f) { return r.found.map(f).join('<br>'); };
+      var when = 'Finished ' + String(r.end || '').slice(0, 19) + ' UTC' + (r.st ? '; started ' + String(r.st).slice(0, 19) : '');
+      var tip = r.s ? fmt(Math.round(r.s)) + ' s of run time' + (odd ? ' for the ' + fmt(odd) + ' odd n in ' + blockText(r.block) : '') : '';
+      return '<tr><td title="' + esc(when) + '">' + stamp(r.end) + '</td><td class="text">' + esc(r.who) + '</td>' +
+        (showPC ? '<td class="text">' + (r.computer ? esc(r.computer) : '<span class="muted">—</span>') + '</td>' : '') +
+        (showProg ? '<td class="text">' + (esc(S.prog(r.prog)) || '—') + '</td>' : '') +
+        '<td class="r">' + pText(r.p[0]) + '</td><td class="r">' + pText(r.p[1]) + '</td>' +
+        (r.found.length ? '<td class="r">' + lines(function (f) { return S.fmtBig(f.p); }) + '</td><td class="r">' + lines(function (f) { return f.p.length; }) +
+          '</td><td class="r">' + lines(function (f) { return bitsOf(f.p).toFixed(3); }) + '</td>'
+          : '<td class="r"><span class="muted">no factor</span></td><td></td><td></td>') +
+        (anyKnown ? '<td class="text">' + lines(function (f) { return f.first ? '<span class="muted" title="Found first by ' + esc(f.first) + '">already known</span>' : '&nbsp;'; }) + '</td>' : '') +
+        '<td class="r"' + (tip ? ' title="' + esc(tip) + '"' : '') + '>' + runTime(r.s) + '</td><td>' + (r.block ? blockText(r.block) : '—') + '</td>' +
+        '<td class="r">' + perN(mine) + '</td></tr>';
+    }).join('');
+    var lead = 2 + (showPC ? 1 : 0) + (showProg ? 1 : 0) + 2 + 3 + (anyKnown ? 1 : 0);
+    var head = '<thead><tr><th rowspan="2">Date (UTC)</th><th class="text" rowspan="2">Who</th>' + (showPC ? '<th class="text" rowspan="2">Computer</th>' : '') +
+      (showProg ? '<th class="text" rowspan="2">Program</th>' : '') + '<th class="group" colspan="2">p</th><th class="group" colspan="' + (anyKnown ? 4 : 3) + '">Factor found</th>' +
+      '<th class="group" colspan="3">Run</th></tr><tr><th class="r">from</th><th class="r">to</th><th class="r">p</th><th class="r">digits</th><th class="r">bits</th>' +
+      (anyKnown ? '<th></th>' : '') + '<th class="r">time</th><th>n sieved</th><th class="r">per n</th></tr></thead>';
+    var foot = runs.length > 1 && total ? '<tfoot><tr><td class="text" colspan="' + lead + '">All ' + fmt(runs.length) + ' runs</td><td class="r">' + runTime(total) +
+      '</td><td></td><td class="r">' + perN(share) + '</td></tr></tfoot>' : '';
+    var k = Object.keys(found).length;
+    var sum = (runs.length === 1 ? '1 run' : fmt(runs.length) + ' runs') + (progs.length === 1 ? ' of ' + esc(S.prog(progs[0])) : '') + ', ' + coverage(runs) +
+      ' · ' + (k ? (k === 1 ? '1 factor' : fmt(k) + ' factors') + ' found' : 'no factor found');
+    var note = 'A sieve run covers a whole block of n at once; per n is its run time divided by the odd n in that block.' +
+      (anyKnown ? ' Already known: found first by another run or by P-1, which keeps the credit.' : '') +
+      (info.kind === 'sieve-big' && !k ? ' The sieve removed this n, but its factor is not on record.' : '');
+    return '<div class="hist-sec"><h3>Sieve</h3><p class="small">' + sum + '</p><div class="table-wrap"><table class="data hist-sieve">' + head + '<tbody>' + body +
+      '</tbody>' + foot + '</table></div><p class="small">' + note + '</p></div>';
+  }
   function paintHistory(n, info, row, pInfo, tiny) {
     var kind = info.kind, H = [], before = info.before, again = null;
-    if (row && row.sieved && !tiny && kind !== 'even' && before) {
+    // the first sieve counts only with the factors it kept: for an n it struck out without keeping one, it gets no row
+    var runs = row && !tiny && kind !== 'even' ? sieveRuns(n, info, row).filter(function (r) { return !r.before || info.oldSurvivor || r.found.length; }) : [];
+    if (runs.length) {
+      // one row per sieve run, in a table of its own
+    } else if (row && row.sieved && !tiny && kind !== 'even' && before) {
       // sieved twice: the first sieve, then the P-1 and PRP work, then the second sieve (below). The first sieve
       // counts only with the factors it kept: for an n it struck out without keeping one, it gets no row
       var kept = info.firstKept || [];
@@ -707,7 +848,7 @@
       H.push([stamp(row.sieve.end), 'Sieve', esc(S.prog(row.sieve.program)) || '—', 'every p &lt; ' + S.depth(row.sieve.depth),
         info.factors && info.factors.length ? factorsText(info.factors) : kind === 'sieve-big' ? 'factor &gt; 10⁷' : 'no factor']);
     }
-    if (row && !row.sieved && row.sieve_part && kind !== 'even') {
+    if (!runs.length && row && !row.sieved && row.sieve_part && kind !== 'even') {
       H.push([stamp(row.sieve_part.end), 'Sieve', esc(S.prog(row.sieve_part.program || '')) || '—', partText(row),
         (info.factors || []).some(function (f) { return !f.small; }) ? factorsText(info.factors.filter(function (f) { return !f.small; })) : 'no factor']);
     }
@@ -732,10 +873,13 @@
     }
     if (again) H.push(again);
     var el = document.getElementById('history');
-    if (H.length) {
-      el.innerHTML = '<div class="table-wrap"><table class="data"><thead><tr><th>Date (UTC)</th><th class="text">Work</th><th class="text">Program</th><th>Parameters</th><th>Result</th></tr></thead><tbody>' +
+    if (runs.length || H.length) {
+      var p1 = H.some(function (h) { return h[1] === 'P-1'; }), prp = H.some(function (h) { return h[1] !== 'P-1'; });
+      el.innerHTML = (runs.length ? sieveTable(info, runs) : '') + (H.length ? '<div class="hist-sec">' +
+        (runs.length ? '<h3>' + (p1 && prp ? 'P-1 and PRP' : p1 ? 'P-1' : 'PRP') + '</h3>' : '') +
+        '<div class="table-wrap"><table class="data"><thead><tr><th>Date (UTC)</th><th class="text">Work</th><th class="text">Program</th><th>Parameters</th><th>Result</th></tr></thead><tbody>' +
         H.map(function (h) { return '<tr><td>' + h[0] + '</td><td class="text">' + h[1] + '</td><td class="text">' + h[2] + '</td><td>' + h[3] + '</td><td class="wrap">' + h[4] + '</td></tr>'; }).join('') +
-        '</tbody></table></div>';
+        '</tbody></table></div></div>' : '');
     } else {
       var t = { queued: 'No work yet. ' + ((ctx.site.stages && ctx.site.stages[0]) ? S.supHTML(esc(ctx.site.stages[0].title)) + ' is next.' : ''),
         future: 'No work yet; the first sieve pass will remove it.', todo: 'No work yet.', even: 'Never assigned: even n are excluded.',

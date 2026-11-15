@@ -30,6 +30,7 @@
       <label for="hdr-n">n =</label>
       <input id="hdr-n" class="input" name="n" type="text" inputmode="numeric" autocomplete="off">
       <button class="btn" type="submit">Look up</button>
+      <button class="btn ghost q" type="button" data-surprise title="Surprise me: open a random n" aria-label="Surprise me: open the page of a random n">?</button>
     </form>
   </div>
 </header>
@@ -73,16 +74,16 @@
     <div id="factors"></div>
   </section>
 
-  <section class="row top">
-    <div class="card wide"><h2>History</h2><div id="history"></div></div>
-    <aside class="card narrow" aria-labelledby="props-title"><h2 id="props-title">Properties</h2><dl class="props" id="props"></dl></aside>
-  </section>
+  <section class="card" aria-labelledby="hist-title"><h2 id="hist-title">History</h2><div id="history"></div></section>
 
-  <section class="card" id="nb-card" aria-labelledby="nb-title">
-    <div class="card-head"><h2 id="nb-title">Neighbourhood</h2><span class="meta" id="nb-meta"></span></div>
-    <div class="strip" id="strip"></div>
-    <div class="strip-ends" id="strip-ends"></div>
-    <div class="legend" id="strip-legend"></div>
+  <section class="row top">
+    <div class="card wide" id="nb-card" aria-labelledby="nb-title">
+      <div class="card-head"><h2 id="nb-title">Neighbourhood</h2><span class="meta" id="nb-meta"></span></div>
+      <div class="strip" id="strip"></div>
+      <div class="strip-ends" id="strip-ends"></div>
+      <div class="legend" id="strip-legend"></div>
+    </div>
+    <aside class="card narrow" aria-labelledby="props-title"><h2 id="props-title">Properties</h2><dl class="props" id="props"></dl></aside>
   </section>
   </div>
 </main>

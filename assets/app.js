@@ -552,6 +552,20 @@
         else location.href = target;
       });
     });
+    // the "?" by the box: the page of a random odd n, from 5 up to the last range with data
+    Array.prototype.forEach.call(document.querySelectorAll('[data-surprise]'), function (b) {
+      b.addEventListener('click', function () {
+        var open = function (hi) {
+          var n = 5 + 2 * Math.floor(Math.random() * Math.floor((hi - 5) / 2));
+          if (Site.onLookup) Site.onLookup(n);
+          else location.href = 'exponent.html?n=' + n;
+        };
+        Site.load('summary').then(function (s) {
+          var tops = (s.shards || []).map(function (x) { return Math.round((parseFloat(x) + 0.1) * 1e6); });
+          open(tops.length ? Math.max.apply(null, tops) : 5000000);
+        }).catch(function () { open(5000000); });
+      });
+    });
   }
   function initFromSummary() {
     Site.load('summary').then(function (s) {
