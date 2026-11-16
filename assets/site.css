@@ -334,7 +334,8 @@ svg.chart.small { min-width: 420px; }
 .crumbs nav { display: flex; flex-wrap: wrap; gap: 8px; font-size: 13px; color: var(--muted); }
 .crumbs nav span[aria-hidden] { color: var(--axis); }
 .exp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr)); gap: 24px; }
-#exp-main { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+#exp-main { display: flex; flex-direction: column; gap: 24px; min-width: 0; transition: opacity .12s; }
+#exp-main.is-loading { opacity: .45; transition: opacity .2s .15s; }
 #exp-main[hidden] { display: none; }
 .identity h1 { margin: 0; font: 600 34px/1.15 var(--mono); letter-spacing: -0.02em; overflow-wrap: anywhere; }
 .identity h1 sup { font-size: 19px; }

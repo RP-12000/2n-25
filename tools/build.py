@@ -10,9 +10,9 @@ another copy given with --archive), and writes the JSON files that the pages loa
                       once a day by tools/prptop_ranks.py; while that file is missing, the ranks in content/site.json)
   data/sieve.json     P-1 factor sizes and survivor constants
   data/site.json      content/site.json (plans, notes), copied as is
-  data/n/<x.x>.json   one file per 0.1M of n: sieve survivors and every P-1 / PRP record; in a range sieved
+  data/n/<x.xx>.json  one file per 0.01M of n: sieve survivors and every P-1 / PRP record; in a range sieved
                       twice, also the survivors of the first sieve (s0)
-  data/f/<x.x>.json   one file per 0.1M of n sieved by Mass Prime Siever: each sieve slice over those n (p and n
+  data/f/<x.xx>.json  one file per 0.01M of n sieved by Mass Prime Siever: each sieve slice over those n (p and n
                       range, when it ended to the second, who ran it, whether it was uploaded, whether it is the
                       first sieve of a range sieved twice) with every factor above 10^7 it found first; the
                       pages find the smaller factors themselves
@@ -81,7 +81,7 @@ import zlib
 
 N_MAX = 10_000_000
 ROW = 200_000          # one row of the Ranges table
-SHARD = 100_000        # one data/n/<x.x>.json file
+SHARD = 10_000         # one data/n/<x.xx>.json and data/f/<x.xx>.json file; the exponent page loads one of each
 BUCKET = 25_000        # one column of the big chart on the Status page
 LOG10_2 = math.log10(2)
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -843,7 +843,9 @@ def date_part(ts):
 
 
 def shard_name(lo):
-    return f"{lo // 100000 / 10:.1f}"
+    """The data file of the SHARD n from lo on, named by lo in millions: 3.61 holds 3,610,000 to 3,619,999."""
+    k = lo // SHARD
+    return f"{k // 100}.{k % 100:02d}"
 
 
 class Archive:
@@ -1677,6 +1679,8 @@ def build(archive_root, out_dir, content_path, live_path=None):
     def exact(p):
         return p if p < 2 ** 53 else str(p)   # JSON numbers above 2^53 lose digits in a browser
     before_sorted = sorted(arc.survivors_before)
+    factored_n = {}                      # each slice's n with factors, sorted once: a slice spans many files
+    summary["shard_size"] = SHARD        # the n in each data/n/ and data/f/ file
     summary["shards"] = []               # the pages fetch only shards that exist
     summary["factor_files"] = []         # ... and only factor files that exist
     for lo in range(0, N_MAX, SHARD):
@@ -1712,7 +1716,10 @@ def build(archive_root, out_dir, content_path, live_path=None):
                 x["upload"] = 1
             if src.get("before"):
                 x["before"] = 1          # the first sieve of a range sieved twice (the old sievers)
-            f = {str(n): [exact(p) for p in ps] for n, ps in sorted(src["f"].items()) if a <= n < b}
+            keys = factored_n.get(id(src))
+            if keys is None:
+                keys = factored_n[id(src)] = sorted(src["f"])
+            f = {str(n): [exact(p) for p in src["f"][n]] for n in between(keys, a, b)}
             if f:
                 x["f"] = f
                 sieve_factor_count += sum(len(v) for v in f.values())

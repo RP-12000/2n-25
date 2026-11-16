@@ -24,8 +24,8 @@ content/site.json    facts written by hand: plans, sieve assignments, benchmarks
 content/sieve_layers.json   smallest-factor layers of the ranges without Mass Prime Siever output
 content/trial_left.json     odd n in 3.6M–5M with no factor below 10^7 (for ranges sieved in part)
 data/                written by tools/build.py; the pages read only these JSON files
-data/n/<x.x>.json    per 0.1M of n: sieve survivors and every P-1 and PRP record (s0: first-sieve survivors)
-data/f/<x.x>.json    per 0.1M of n: every sieve run over those n, and every sieve factor above 10^7 under the run that found it first
+data/n/<x.xx>.json   per 0.01M of n: sieve survivors and every P-1 and PRP record (s0: first-sieve survivors)
+data/f/<x.xx>.json   per 0.01M of n: every sieve run over those n, and every sieve factor above 10^7 under the run that found it first
 archive/             local copy of what build.py needs from the project archive (not published)
 archive/pm1_splits.json     prime factors of composite P-1 results, worked out once by build.py
 archive/prptop.json  Top PRP rank of each known prime on PRP Records, read once a day

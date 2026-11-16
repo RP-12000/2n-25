@@ -70,6 +70,8 @@
     if (n >= 1e7) return paint(my, n, { kind: 'out' });
     if (n < 5) return paint(my, n, { kind: 'neg' });
     if (n % 2 === 0) return paint(my, n, { kind: 'even' });
+    // until its data files are in, the n shown so far fades (after a moment: a quick swap does not flicker)
+    document.getElementById('exp-main').classList.add('is-loading');
     Promise.all([S.shard(n, ctx.sum.shards), S.factorFile(n, ctx.sum.factor_files)]).then(function (got) {
       if (my !== token) return;
       var shard = got[0], row = rowOf(n);
@@ -127,7 +129,7 @@
 
   /* Every known sieve factor of 2^n - 25, smallest first: the primes up to `limit` found here by trial division
      (they are no news to any sieve, so data/ leaves them out) and every larger one in the sieve output
-     (data/f/<x.x>.json), each with the slice that found it: {p: string, src: slice or null, small: bool}. */
+     (data/f/<x.xx>.json), each with the slice that found it: {p: string, src: slice or null, small: bool}. */
   function sieveFactors(n, ff, shard, limit) {
     var slices = ff && ff.slices ? ff.slices : [];
     var out = S.factorsBelow(n, limit).map(function (p) {
@@ -185,6 +187,7 @@
     if (my !== token) return;
     var kind = info.kind, valid = typeof n === 'number' && Number.isFinite(n) && Math.floor(n) === n;
     var none = ['even', 'neg', 'out', 'bad'].indexOf(kind) >= 0;
+    document.getElementById('exp-main').classList.remove('is-loading');
     document.getElementById('exp-main').hidden = none;
     document.getElementById('exp-none').hidden = !none;
     if (none) return paintNone(n, kind);
@@ -334,16 +337,17 @@
       return !!recs && recs.some(function (r) { return r[3]; });
     };
     function walk() {
+      var size = S.shardSize();            // the n of one data file
       while (m >= 5 && m < 1e7) {
         var row = rowOf(m);
         if (row && row.sieved) {
-          var lo = Math.floor(m / 100000) * 100000;
+          var lo = Math.floor(m / size) * size;
           return S.shard(m, ctx.sum.shards).then(function (shard) {
             var s = shard && shard.s ? shard.s : [], a = 0, b = s.length;
             while (a < b) { var c = (a + b) >> 1; if (s[c] < m) a = c + 1; else b = c; }
             if (dir > 0) {
               for (var i = a; i < s.length; i++) if (!factored(shard, s[i]) && !ctx.primeInfo[s[i]]) return s[i];
-              m = lo + 100001;
+              m = lo + size + 1;
             } else {
               for (var j = a < s.length && s[a] === m ? a : a - 1; j >= 0; j--) if (!factored(shard, s[j]) && !ctx.primeInfo[s[j]]) return s[j];
               m = lo - 1;
@@ -352,9 +356,9 @@
           });
         }
         // not sieved from the small primes yet: trial division here, and the factors of any sieve slice
-        var blockLo = Math.floor(m / 100000) * 100000;
+        var blockLo = Math.floor(m / size) * size;
         return Promise.all([S.shard(m, ctx.sum.shards), S.factorFile(m, ctx.sum.factor_files)]).then(function (got) {
-          while (m >= Math.max(5, blockLo) && m < Math.min(1e7, blockLo + 100000)) {
+          while (m >= Math.max(5, blockLo) && m < Math.min(1e7, blockLo + size)) {
             if (++tries > 2000) return null;
             if (!ctx.primeInfo[m] && !hasBig(got[1], got[0], m) && !S.smallestFactor(m, TRIAL)) return m;
             m += 2 * dir;
@@ -737,7 +741,7 @@
   }
   function runKey(x) { return [x.p[0], x.p[1], x.end || '', x.before ? 1 : 0].join('|'); }
 
-  /* Every sieve run over n, from the slices of data/f/<x.x>.json that cover it, smallest p first; a slice the old
+  /* Every sieve run over n, from the slices of data/f/<x.xx>.json that cover it, smallest p first; a slice the old
      sievers ran as several stations gives the stations whose n range holds n. Each run lists the factors of n it
      found: a run of the old sievers only those it kept, any other run every known factor in its p range, with
      what found it first when that was another run or P-1. */

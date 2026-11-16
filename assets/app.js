@@ -74,23 +74,31 @@
 
   /* ---------- data ---------- */
   var cache = {};
+  // data/n/ and data/f/ hold one file per SHARD n, named by its first n in millions: summary.json's shard_size is
+  // 0.01M (3.61 holds 3,610,000 to 3,619,999); data built before it said so have 0.1M per file (3.6)
+  var SHARD = 100000;
   Site.load = function (name) {
     if (!cache[name]) {
       cache[name] = fetch('data/' + name + '.json').then(function (r) {
         if (!r.ok) throw new Error('data/' + name + '.json answered HTTP ' + r.status);
         return r.json();
       });
+      if (name === 'summary') cache[name] = cache[name].then(function (s) { if (s && s.shard_size) SHARD = s.shard_size; return s; });
     }
     return cache[name];
   };
-  Site.shardName = function (n) { return (Math.floor(n / 100000) / 10).toFixed(1); };
-  // have: the shard names listed in summary.json; a 0.1M of n with nothing recorded has no file
+  Site.shardSize = function () { return SHARD; };
+  Site.shardName = function (n) {
+    var d = Math.round(Math.log10(1e6 / SHARD)), u = Math.pow(10, d), k = Math.floor(n / SHARD);
+    return Math.floor(k / u) + '.' + String(k % u).padStart(d, '0');
+  };
+  // have: the shard names listed in summary.json; a SHARD of n with nothing recorded has no file
   Site.shard = function (n, have) {
     var name = Site.shardName(n);
     if (have && have.indexOf(name) < 0) return Promise.resolve(null);
     return Site.load('n/' + name).catch(function () { return null; });
   };
-  // the sieve factors above 10^7 for n's 0.1M (data/f/<x.x>.json), when summary.json lists that file
+  // the sieve factors above 10^7 for n's SHARD of n (data/f/<x.xx>.json), when summary.json lists that file
   Site.factorFile = function (n, have) {
     var name = Site.shardName(n);
     if (!have || have.indexOf(name) < 0) return Promise.resolve(null);
@@ -594,18 +602,29 @@
         else location.href = target;
       });
     });
-    // the "?" by the box: the page of a random odd n, from 5 up to the last range with data
+    // the "?" by the box: the page of a random odd n, from 5 up to the last range with data. On the exponent page,
+    // which shows another n in place, the next one is picked ahead and its data files fetched as soon as the pointer
+    // or focus reaches "?", and again once the n it opened has its files, so a click shows the next n at once
+    var below = function (hi) { return 5 + 2 * Math.floor(Math.random() * Math.floor((hi - 5) / 2)); };
+    var pick = function () {
+      return Site.load('summary').then(function (s) {
+        var tops = (s.shards || []).map(function (x) { return Math.round(parseFloat(x) * 1e6) + SHARD; });
+        var n = below(tops.length ? Math.max.apply(null, tops) : 5000000);
+        return { n: n, ready: Site.onLookup ? Promise.all([Site.shard(n, s.shards), Site.factorFile(n, s.factor_files)]) : null };
+      }).catch(function () { return { n: below(5000000), ready: null }; });
+    };
+    var ahead = null;
+    var prepare = function () { if (Site.onLookup && !ahead) ahead = pick(); };
     Array.prototype.forEach.call(document.querySelectorAll('[data-surprise]'), function (b) {
+      ['pointerenter', 'focus', 'touchstart'].forEach(function (ev) { b.addEventListener(ev, prepare, { passive: true }); });
       b.addEventListener('click', function () {
-        var open = function (hi) {
-          var n = 5 + 2 * Math.floor(Math.random() * Math.floor((hi - 5) / 2));
-          if (Site.onLookup) Site.onLookup(n);
-          else location.href = 'exponent.html?n=' + n;
-        };
-        Site.load('summary').then(function (s) {
-          var tops = (s.shards || []).map(function (x) { return Math.round((parseFloat(x) + 0.1) * 1e6); });
-          open(tops.length ? Math.max.apply(null, tops) : 5000000);
-        }).catch(function () { open(5000000); });
+        var next = ahead || pick();
+        ahead = null;
+        next.then(function (x) {
+          if (!Site.onLookup) { location.href = 'exponent.html?n=' + x.n; return; }
+          Site.onLookup(x.n);
+          if (x.ready) x.ready.then(prepare, prepare);
+        });
       });
     });
   }
