@@ -586,7 +586,7 @@
       return row;
     }
     var fz = S.factorize(p - BigInt(1), bound);
-    row.pm1 = powText(fz.factors) + (fz.rest ? ' × (' + S.fmtBig(fz.rest) + ')' : '');
+    row.pm1 = powText(fz.factors) + (fz.rest ? ' × <span title="Composite, not factored further on this page">(' + S.fmtBig(fz.rest) + ')</span>' : '');
     if (fz.rest) return row;
     var mb = S.minB(fz.factors);
     row.b1 = S.fmtBig(mb[0]);

@@ -295,8 +295,41 @@
     if (!Site.isPrime50(p)) return 'is not prime';
     return '';
   };
-  /* Factor m (BigInt or Number) by trial division up to `bound`; returns [[prime, exp], ...] with BigInt primes
-     and a flag when an unfactored cofactor remains. */
+  /* Steps Pollard's rho may take for one number: a fraction of a second, enough to split off any prime factor
+     up to about 10^10 (every p - 1 of a sieve factor below 2^50 splits in a few thousand steps). */
+  var RHO_STEPS = 300000;
+  function gcdBig(a, b) { while (b) { var t = a % b; a = b; b = t; } return a; }
+  /* A proper factor of the odd composite m (BigInt) by Pollard's rho with Brent's cycle search and one gcd per
+     128 steps, or null when st.steps runs out first. */
+  function rhoFactor(m, st) {
+    var one = BigInt(1);
+    for (var c = 1; c <= 20 && st.steps > 0; c++) {
+      var C = BigInt(c), y = BigInt(2), x = y, ys = y, q = one, g = one, r = 1, i, k, lim;
+      while (g === one && st.steps > 0) {
+        x = y;
+        for (i = 0; i < r; i++) y = (y * y + C) % m;
+        st.steps -= r;
+        for (k = 0; k < r && g === one; k += 128) {
+          ys = y;
+          lim = Math.min(128, r - k);
+          for (i = 0; i < lim; i++) { y = (y * y + C) % m; q = q * (x > y ? x - y : y - x) % m; }
+          st.steps -= lim;
+          g = gcdBig(q, m);
+        }
+        r *= 2;
+      }
+      if (g === m) {
+        // the last batch went past the factor: redo it one step at a time
+        g = one;
+        for (i = 0; i < 128 && g === one; i++) { ys = (ys * ys + C) % m; g = gcdBig(x > ys ? x - ys : ys - x, m); }
+      }
+      if (g !== one && g !== m) return g;
+    }
+    return null;
+  }
+  /* Factor m (BigInt or Number): trial division up to `bound`, then Pollard's rho for a composite part that is
+     left. Returns {factors: [[prime, exp], ...] smallest first, with BigInt primes; rest: the product of any part
+     rho could not split within RHO_STEPS, or null}. */
   Site.factorize = function (m, bound) {
     m = BigInt(m);
     var out = [], zero = BigInt(0), one = BigInt(1);
@@ -312,8 +345,17 @@
     }
     var rest = null;
     if (m > one) {
-      if (m <= BigInt(P[P.length - 1]) * BigInt(P[P.length - 1]) || Site.isProbablePrime(m)) out.push([m, 1]);
-      else rest = m;
+      // no prime up to the last one tried divides what is left, so any part of it below that prime squared is prime
+      var top = BigInt(P[P.length - 1]), sq = top * top, todo = [m], big = {}, st = { steps: RHO_STEPS };
+      while (todo.length) {
+        var c = todo.pop();
+        if (c <= sq || Site.isProbablePrime(c)) { big[String(c)] = (big[String(c)] || 0) + 1; continue; }
+        var d = rhoFactor(c, st);
+        if (d) todo.push(d, c / d);
+        else rest = rest ? rest * c : c;
+      }
+      Object.keys(big).forEach(function (s) { out.push([BigInt(s), big[s]]); });
+      out.sort(function (u, v) { return u[0] < v[0] ? -1 : u[0] > v[0] ? 1 : 0; });
     }
     return { factors: out, rest: rest };
   };
