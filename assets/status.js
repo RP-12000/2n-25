@@ -319,8 +319,15 @@
     var odd = rows.reduce(function (s, r) { return s + r.odd; }, 0);
     var sieved = rows.length && rows.every(function (r) { return r.sieved; });
     var depth = sieved ? Math.min.apply(null, rows.map(function (r) { return r.sieve.depth || 0; })) : 0;
-    var tested = rows.reduce(function (s, r) { return s + r.prp.tests; }, 0);
-    var cands = sieved ? rows.reduce(function (s, r) { return s + (r.survivors || 0) - r.pm1.factors; }, 0) : 0;
+    var tests = rows.reduce(function (s, r) { return s + r.prp.tests; }, 0);
+    // the candidates: what the sieve left, less the n P-1 factored (in a range sieved twice, those the second sieve left)
+    var cands = sieved ? rows.reduce(function (s, r) {
+      return s + (r.survivors || 0) - (r.pm1.after_sieve !== undefined ? r.pm1.after_sieve : r.pm1.factors || 0);
+    }, 0) : 0;
+    // the PRP-tested candidates: a sieve run after the PRP tests may have found a factor for some tested n, which
+    // then count under the sieve and are no candidates any more
+    var tested = sieved ? Math.max(0, cands - rows.reduce(function (s, r) { return s + (r.untested || 0); }, 0)) : tests;
+    var refound = Math.max(0, tests - tested);
     var target = S.sieveTarget(site, act.lo).target;
     var lowEst = Math.round(M.survivors(odd, target) / 100) * 100, highEst = Math.round(M.survivors(odd, 1e12) / 100) * 100;
     var badge = site.active && site.active.badge ? '<span class="pill accent">' + esc(site.active.badge) + '</span>' : '';
@@ -349,7 +356,9 @@
         return '<span' + (k % 2 ? ' class="odd"' : '') + ' style="left:' + (k * 100 / cells).toFixed(2) + '%">' + S.depth(k * STEP) + '</span>';
       }).join('') + '<span>' + S.depth(MAX) + '</span></div></div>');
     var prpPct = cands ? tested / cands * 100 : 0;
-    h.push('<div><div class="meter-label"><span>PRP tests in range</span><span class="mono">' +
+    var prpTip = cands && refound ? ' title="' + esc(fmt(tests) + ' n in this range have a PRP result; a later sieve run found a factor for ' + fmt(refound) +
+      ' of them, so they count under the sieve and are not among the ' + fmt(cands) + ' candidates.') + '"' : '';
+    h.push('<div><div class="meter-label"><span>PRP-tested candidates</span><span class="mono"' + prpTip + '>' +
       (cands ? fmt(tested) + ' of ' + fmt(cands) : fmt(tested) + ' of ≈ ' + fmt(lowEst) + '–' + fmt(highEst)) + '</span></div>' +
       '<div class="meter">' + (prpPct ? '<i style="width:' + prpPct.toFixed(1) + '%"></i>' : '') + '</div></div></div>');
     document.getElementById('now').innerHTML = h.join('');

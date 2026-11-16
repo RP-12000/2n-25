@@ -46,12 +46,13 @@
      the others, and the n counts as removed by the sieve) */
   function p1Count(c) { return c.pm1_after_sieve !== undefined ? c.pm1_after_sieve : c.pm1_factors; }
   function p1Of(r) { return r.pm1.after_sieve !== undefined ? r.pm1.after_sieve : r.pm1.factors || 0; }
-  /* The n a PRP test settled, each n once: in a range sieved twice, the second sieve found a factor for some n that a
-     PRP test had already shown composite, and those count as removed by the sieve. What is left besides the sieve and
-     P-1 there are the PRP-tested n, and the small primes n = 5, 7, 9 and 13, checked directly. */
+  /* The n a PRP test settled, each n once: a sieve run after the PRP tests (the second sieve of a range sieved twice,
+     or a deeper pass of the sieve) found a factor for some n that a PRP test had already shown composite, and those
+     count as removed by the sieve. What is left besides the sieve and P-1 there are the PRP-tested n, and the small
+     primes n = 5, 7, 9 and 13, checked directly. */
   function prpOf(r) {
     if (r.subs) return r.prp.n;
-    return r.sieve_before ? Math.max(0, (r.resolved || 0) - (r.removed_by_sieve || 0) - p1Of(r)) : r.prp.tests || 0;
+    return r.sieved ? Math.max(0, (r.resolved || 0) - (r.removed_by_sieve || 0) - p1Of(r)) : r.prp.tests || 0;
   }
   function prpTotal() { return data.rows.reduce(function (s, r) { return s + prpOf(r); }, 0); }
   function smallIn(lo, hi) { return (data.site.small_primes || []).filter(function (p) { return lo <= p.n && p.n < hi; }).map(function (p) { return p.n; }); }
@@ -59,7 +60,7 @@
     var small = all ? smallIn(0, 1e7) : smallIn(lo, hi);
     var refound = tests + small.length - shown;
     if (refound <= 0) return '';
-    return 'PRP tests ran on ' + fmt(tests) + ' n; for ' + fmt(refound) + ' of them the second sieve has since found a factor, so they count under the sieve.' +
+    return 'PRP tests ran on ' + fmt(tests) + ' n; for ' + fmt(refound) + ' of them a later sieve run has since found a factor, so they count under the sieve.' +
       (small.length ? ' Also counted here: n = ' + small.join(', ').replace(/, (\d+)$/, ' and $1') + ', where 2ⁿ − 25 is a small prime checked directly.' : '');
   }
   function share(r) {

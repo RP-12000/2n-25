@@ -225,8 +225,10 @@
     var V = {
       comp: ['Is composite.', 'The PRP-3 residue is not 1, so 2ⁿ − 25 is not prime. No factor is known.', 'good'],
       p1: [hasText(nP1 + nFac), 'P-1 found a factor, so no PRP test was needed.' + (again ? ' ' + again : ''), 'good'],
+      // a later sieve pass can strike out an n that a PRP test already showed composite; its PRP result stays in the tables below
       sieve: [hasText(nFac), later || fresh ||
-        'The sieve struck it out' + (info.struck || (row && row.sieve && row.sieve.end) ? ' on ' + S.when(info.struck || row.sieve.end) : '') + ', before any P-1 or PRP work.', 'good'],
+        'The sieve struck it out' + (info.struck || (row && row.sieve && row.sieve.end) ? ' on ' + S.when(info.struck || row.sieve.end) : '') +
+        ((info.prp || []).length || (info.pm1 || []).length ? '.' : ', before any P-1 or PRP work.'), 'good'],
       'sieve-big': ['Has a known factor.', 'The sieve to ' + S.depth(depth) + ' struck it out; its factor lies between 10⁷ and ' + S.depth(depth) + ' and is not stored.', 'good'],
       future: ['Has a small factor.', 'Trial division on this page finds it; the first sieve pass will remove this n.', 'good'],
       'sieve-part': ['Has a known factor.', 'The sieve found it while sieving ' + partText(row) + '. The sieve of the smaller p is still running.', 'good'],
