@@ -295,10 +295,8 @@
     var p = c.p, lo = col * p.bucket, hi = lo + p.bucket, st = p.state[col];
     var t = S.tipTable(document.getElementById('big-tip'), fmt(lo) + ' ≤ n < ' + fmt(hi));
     var ly = layersOf(p, col), k, part = st === 's' && ly.slice(7).some(Boolean);
-    t.add(fmt(p.odd[col]), 'odd n');
     for (k = 0; k < ly.length; k++) if (ly[k]) t.add(fmt(ly[k]), layerName(k), 'sq ly-' + Math.min(k, LY_MAX));
     if (p.depth[col]) {
-      t.add(fmt(leftOf(p, col)), 'left by the sieve, p < ' + S.depth(p.depth[col]));
       if (p.pm1[col]) t.add(fmt(p.pm1[col]), 'factored by P-1', 'sq st-pm1');
       if (p.open[col]) t.add(fmt(p.open[col]), 'not tested yet', 'sq st-open');
       if (p.comp[col]) t.add(fmt(p.comp[col]), 'PRP-tested composite', 'sq st-comp');
