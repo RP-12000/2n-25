@@ -628,7 +628,7 @@ def uploaded_sieve(root, notes, accepted):
             continue
         run = up.get("run") or {}
         log = {"start": run.get("start") or None, "end": run.get("end") or None, "wall_s": float(run.get("wall_s") or 0),
-               "program": run.get("program") or "Mass Prime Siever 12.0"}
+               "program": run.get("program") or "Mass Prime Siever 12.0", "named": bool(run.get("program"))}
         who = str(up.get("handle") or "anonymous")[:40]
         for e in read_mps_file(path, notes, log):
             odd = len(range(max(e["n0"], 5) | 1, min(e["n1"], N_MAX), 2))
@@ -648,17 +648,22 @@ def uploaded_sieve(root, notes, accepted):
 
 
 def mps_log(folder):
-    """Start, end, wall-clock seconds and version from a Mass Prime Siever siever.log."""
+    """Start, end, wall-clock seconds and version from a Mass Prime Siever siever.log. The version comes from
+    the log's "Mass Prime Siever <v> starting" line; a log without one takes it from the
+    "Program: Mass Prime Siever <v>" line of the slice's source.txt, and 12.0 is assumed only without both."""
     path = os.path.join(folder, "siever.log")
     if not os.path.exists(path):
         return None
     text = read_text(path)
     stamps = re.findall(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", text, re.M)
     totals = re.findall(r"Total elapsed time:\s+([\d.]+)", text)
-    version = re.search(r"Mass Prime Siever ([\d.]+) starting", text)
+    version = re.search(r"Mass Prime Siever (\d+(?:\.\d+)+) starting", text)
+    if not version and os.path.exists(os.path.join(folder, "source.txt")):
+        version = re.search(r"^\s*Program:\s*Mass Prime Siever (\d+(?:\.\d+)+)",
+                            read_text(os.path.join(folder, "source.txt")), re.M | re.I)
     return {"start": stamps[0] if stamps else None, "end": stamps[-1] if stamps else None,
             "wall_s": float(totals[-1]) if totals else 0.0,
-            "program": "Mass Prime Siever " + (version.group(1) if version else "12.0")}
+            "program": "Mass Prime Siever " + (version.group(1) if version else "12.0"), "named": bool(version)}
 
 
 def run_key(e):
@@ -965,6 +970,14 @@ class Archive:
             kept = [e for e in extra if any(o["p0"] <= e["p0"] and o["p1"] >= e["p1"] and o["n0"] <= max(e["n0"], lo)
                                             and o["n1"] >= min(e["n1"], hi) for o in mps)]
             self.uploads_archived.update(e["upload"] for e in kept)
+            for e in kept:
+                g = e.get("log")
+                if g and not g.get("named"):
+                    # the upload's siever.log names no version: the archive's copy of the run may (its source.txt)
+                    o = next((o for o in mps if (o.get("log") or {}).get("named") and o["p0"] <= e["p0"] and o["p1"] >= e["p1"]
+                              and o["n0"] <= max(e["n0"], lo) and o["n1"] >= min(e["n1"], hi)), None)
+                    if o:
+                        e["log"] = {**g, "program": o["log"]["program"], "named": True}
             kept_ids = {id(e) for e in kept}
             extra = [e for e in extra if id(e) not in kept_ids]
             self.uploads_used.update(id(e) for e in extra)

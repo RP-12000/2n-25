@@ -344,12 +344,11 @@
     var marks = [], k;
     for (k = 1; k < cells; k++) marks.push(k);
     h.push('<div class="meters"><div><div class="meter-label"><span>Sieve depth</span><span class="mono">' +
-      (depth ? 'p &lt; ' + S.depth(depth) : partLabel || 'not started') + ' · target ' + S.depth(target) + '</span></div>' +
-      '<div class="meter meter-lg" role="img" aria-label="' + esc('Sieve depth ' + (depth ? 'p < ' + S.depth(depth) : partLabel || 'not started') + ', target ' + S.depth(target) + ', on a plain scale from 0 to 10¹⁵') + '">' +
+      (depth ? 'p &lt; ' + S.depth(depth) : partLabel || 'not started') + '</span></div>' +
+      '<div class="meter meter-lg" role="img" aria-label="' + esc('Sieve depth ' + (depth ? 'p < ' + S.depth(depth) : partLabel || 'not started') + ', on a plain scale from 0 to 10¹⁵') + '">' +
       (depthPct ? '<i style="width:' + Math.max(0.3, depthPct).toFixed(2) + '%"></i>' : '') +
       spans.map(function (sp) { return '<i style="left:' + pos(sp[0]).toFixed(2) + '%;width:' + Math.max(0.3, pos(sp[1]) - pos(sp[0])).toFixed(2) + '%"></i>'; }).join('') +
-      marks.map(function (k) { return '<b style="left:' + (k * 100 / cells).toFixed(2) + '%"></b>'; }).join('') +
-      (target < MAX ? '<s style="left:' + pos(target).toFixed(2) + '%" title="target ' + S.depth(target) + '"></s>' : '') + '</div>' +
+      marks.map(function (k) { return '<b style="left:' + (k * 100 / cells).toFixed(2) + '%"></b>'; }).join('') + '</div>' +
       '<div class="meter-ticks meter-ticks-lg"><span style="left:0">0</span>' + marks.map(function (k) {
         return '<span' + (k % 2 ? ' class="odd"' : '') + ' style="left:' + (k * 100 / cells).toFixed(2) + '%">' + S.depth(k * STEP) + '</span>';
       }).join('') + '<span>' + S.depth(MAX) + '</span></div></div>');

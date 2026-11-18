@@ -5,7 +5,8 @@ The project archive sits on a drive that is not always attached, so tools/build.
 instead. For every Ranges/<a>M~<b>M folder it copies:
 
   TF/          origin.txt, override.txt, log.txt (also in Station N/ subfolders), worktodo_general*.txt,
-               and Mass Prime Siever results.json and siever.log in any subfolder
+               and Mass Prime Siever results.json and siever.log in any subfolder, with the slice's
+               source.txt (its "Program:" line names the version when siever.log does not)
   Candidates/  *.txt
   Pm1/         results.json.txt
   PRP/         results.json.txt
@@ -72,6 +73,8 @@ def wanted(parts):
     if top == "TF":
         if name in ("results.json", "siever.log"):
             return True                                   # Mass Prime Siever, one subfolder per slice
+        if name == "source.txt" and len(parts) >= 3:
+            return True                                   # where a slice came from, and with which program
         if len(parts) == 2 and name.startswith("worktodo_general") and name.endswith(".txt"):
             return True
         return name in SIEVE_TEXT and (len(parts) == 2 or (len(parts) == 3 and parts[1].startswith("Station ")))

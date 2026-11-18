@@ -105,29 +105,22 @@
         (tEnd ? ', ' + esc(monthName(tEnd)) : '') + '</text>');
     }
 
-    // planned work on the active range
+    // the active range: a sieve step running on it now (planned steps are not drawn), and the program that sieves it
     if (act) {
       var actRows = rows.filter(function (r) { return inAct(r, act); });
       var actDepth = Math.max.apply(null, [0].concat(actRows.map(function (r) { return r.sieve && r.sieve.depth ? r.sieve.depth : 0; })));
-      var steps = planSteps(site, actDepth);
+      var first = planSteps(site, actDepth)[0];
+      var live = first && /^(next|running)$/i.test(first.status || '');
       var xa = X(act.lo) + 1.5, xb = X(act.hi) - 1.5, xm = (xa + xb) / 2;
-      if (steps.length) {
-        var first = steps[0], last = steps[steps.length - 1];
-        var live = /^(next|running)$/i.test(first.status || '');
-        var yBase = Y(Math.max(actDepth, Math.pow(10, E0)));
-        var yFirst = Y(first.p_to), yLast = Y(last.p_to);
-        if (live) {
-          o.push('<rect class="bar plan" x="' + S.r1(xa) + '" y="' + S.r1(yFirst) + '" width="' + S.r1(xb - xa) + '" height="' + S.r1(yBase - yFirst) + '"></rect>');
-          o.push('<text class="mid accent" style="font-weight:600" x="' + S.r1(xm) + '" y="' + S.r1(yFirst + 19) + '">' + S.depth(first.p_to) + ' ' + esc(String(first.status).toLowerCase()) + '</text>');
-        }
-        var dashFrom = live ? yFirst : yBase;
-        if (!live || steps.length > 1) {
-          o.push('<rect class="bar dashed" x="' + S.r1(xa) + '" y="' + S.r1(yLast) + '" width="' + S.r1(xb - xa) + '" height="' + S.r1(dashFrom - yLast) + '"></rect>');
-          o.push('<text class="mid accent" x="' + S.r1(xm) + '" y="' + S.r1((yLast + dashFrom) / 2 + 4) + '">→ ' + S.depth(last.p_to) + ' planned</text>');
-        }
-        var cur = (site.siever_versions || []).filter(function (v) { return v.hi === null || v.hi === undefined; })[0];
-        if (cur) o.push('<text class="sans mid accent" style="font-weight:600" x="' + S.r1(xm) + '" y="' + S.r1(yLast - 10) + '">' + prog(cur.program) + '</text>');
+      var yTop = Y(Math.max(actDepth, Math.pow(10, E0)));
+      if (live) {
+        var yFirst = Y(first.p_to);
+        o.push('<rect class="bar plan" x="' + S.r1(xa) + '" y="' + S.r1(yFirst) + '" width="' + S.r1(xb - xa) + '" height="' + S.r1(yTop - yFirst) + '"></rect>');
+        o.push('<text class="mid accent" style="font-weight:600" x="' + S.r1(xm) + '" y="' + S.r1(yFirst + 19) + '">' + S.depth(first.p_to) + ' ' + esc(String(first.status).toLowerCase()) + '</text>');
+        yTop = yFirst;
       }
+      var cur = (site.siever_versions || []).filter(function (v) { return v.hi === null || v.hi === undefined; })[0];
+      if (cur && (actDepth || live)) o.push('<text class="sans mid accent" style="font-weight:600" x="' + S.r1(xm) + '" y="' + S.r1(yTop - 10) + '">' + prog(cur.program) + '</text>');
     }
 
     // label for the older CPU sievers
@@ -160,7 +153,6 @@
     var d = rows.filter(function (r) { return r.sieve && r.sieve.depth; }).map(function (r) { return r.sieve.depth; });
     var s = 'Sieve depth per 0.2M range of n';
     if (d.length) s += ': from ' + S.depth(Math.min.apply(null, d)) + ' to ' + S.depth(Math.max.apply(null, d));
-    if (act) s += '; ' + S.rangeLabel(act.lo, act.hi) + ' planned to ' + S.depth(S.sieveTarget(site, act.lo).target);
     var twice = rows.filter(function (r) { return r.sieve && r.sieve_before; });
     if (twice.length) s += '. ' + S.rangeLabel(Math.min.apply(null, twice.map(function (r) { return r.lo; })), Math.max.apply(null, twice.map(function (r) { return r.hi; }))) +
       ' was sieved twice: first to between ' + S.depth(Math.min.apply(null, twice.map(function (r) { return r.sieve_before.depth; }))) + ' and ' +
@@ -176,9 +168,7 @@
       var steps = planSteps(site, actDepth);
       if (steps.length && /^(next|running)$/i.test(steps[0].status || '')) {
         h.push('<span><i class="key u" aria-hidden="true"></i>' + esc(steps[0].status) + ': to ' + S.depth(steps[0].p_to) + ' · ' + esc(steps[0].machine) + '</span>');
-        steps = steps.slice(1);
       }
-      if (steps.length) h.push('<span><i class="key dashbox" aria-hidden="true"></i>Planned: to ' + S.depth(steps[steps.length - 1].p_to) + ' · ' + esc(steps[0].machine) + '</span>');
     }
     h.push('<span><i class="key open" aria-hidden="true"></i>Not sieved yet</span>');
     document.getElementById('depth-legend').innerHTML = h.join('');
@@ -207,7 +197,7 @@
     var lo = Math.floor(vLo / step) * step, hi = Math.ceil(vHi / step) * step;
     var Y = function (v) { return B - (v - lo) / (hi - lo) * (B - T); };
     var o = ['<svg class="chart small" viewBox="0 0 620 250" role="img" aria-label="Predicted candidates left in ' + esc(S.rangeLabel(act.lo, act.hi)) +
-      ' against sieve depth: ' + planMarks(site, old).map(function (p) { return 'about ' + fmt(round100(f(p))) + ' at ' + S.depth(p); }).join(', ') + '.">'];
+      ' against sieve depth' + (old ? ': about ' + fmt(round100(f(old))) + ' at ' + S.depth(old) : '') + '.">'];
     var g = [], yl = [], xl = [];
     for (var v = lo; v <= hi + 1e-9; v += step) {
       if (v > lo) g.push('<line x1="' + L + '" y1="' + S.r1(Y(v)) + '" x2="' + R + '" y2="' + S.r1(Y(v)) + '"></line>');
@@ -229,21 +219,12 @@
       var sm = actRows.reduce(function (s, r) { return s + (r.survivors || 0); }, 0);
       if (sm >= lo && sm <= hi) measured = { p: dm, v: sm };
     }
-    var reached = Math.max(old, measured ? measured.p : 0);
-    var prpAt = site.prp_from_depth;
     var marks = [];
     if (old) marks.push({ x: X(old), y: Y(f(old)), dot: 'open', text: S.depth(old) + ' (old depth) · ' + fmt(round100(f(old))), tc: 'strong' });
-    if (measured) marks.push({ x: X(measured.p), y: Y(measured.v), dot: 'ink', text: 'measured · ' + fmt(measured.v) + (prpAt && measured.p >= prpAt ? ' · PRP starts' : ''), tc: 'strong' });
-    // the planned steps still ahead
-    planSteps(site, 0).forEach(function (s) {
-      if (s.p_to <= reached) return;
-      var t = S.depth(s.p_to) + ' · ' + fmt(round100(f(s.p_to)));
-      if (prpAt && s.p_to === prpAt) t += ' · PRP starts';
-      marks.push({ x: X(s.p_to), y: Y(f(s.p_to)), dot: 'plan', text: t, tc: 'accent' });
-    });
+    // where the sieve is now, with the candidates it actually left
+    if (measured) marks.push({ x: X(measured.p), y: Y(measured.v), dot: 'ink', text: S.depth(measured.p) + ' (now) · ' + fmt(measured.v), tc: 'strong' });
     marks.forEach(function (m) {
-      o.push(m.dot === 'plan' ? '<circle class="dot" cx="' + S.r1(m.x) + '" cy="' + S.r1(m.y) + '" r="4.5"></circle>'
-        : m.dot === 'ink' ? '<circle cx="' + S.r1(m.x) + '" cy="' + S.r1(m.y) + '" r="5" style="fill: var(--ink)"></circle>'
+      o.push(m.dot === 'ink' ? '<circle cx="' + S.r1(m.x) + '" cy="' + S.r1(m.y) + '" r="5" style="fill: var(--ink)"></circle>'
         : '<circle cx="' + S.r1(m.x) + '" cy="' + S.r1(m.y) + '" r="4.5" style="fill: var(--surface); stroke: var(--ink-2); stroke-width: 2"></circle>');
     });
     // each label beside its dot, where it stays inside the chart and clear of the curve, the dots and the other labels
@@ -282,11 +263,6 @@
       });
     });
     return out.join('');
-  }
-  function planMarks(site, old) {
-    var out = old ? [old] : [];
-    planSteps(site, 0).forEach(function (s) { if (s.p_to > old) out.push(s.p_to); });
-    return out;
   }
 
   /* ---------- P-1 factor sizes ---------- */
