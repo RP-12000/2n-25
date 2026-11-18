@@ -168,7 +168,7 @@
       "hardware": "CPU, 3 stations in parallel"
     },
     {
-      "program": "Mass Prime Siever 12.0/13.0",
+      "program": "Mass Prime Siever 12.0 – 14.0",
       "first_run": "2026-11",
       "lo": 3600000,
       "hi": null,
@@ -301,6 +301,10 @@
     [
       "2026-11-14",
       "PRP tests start at 3.6M, smallest n first, with Prime95 on the laptop."
+    ],
+    [
+      "2026-11-18",
+      "Mass Prime Siever 14.0: the GPU now generates its own primes and splits n into residue classes per prime. Two Kaggle T4s sieve about 6 × 10^12 per hour, 2.1× faster than 13.0."
     ]
   ],
   "pause": {
