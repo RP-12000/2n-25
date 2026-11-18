@@ -60,7 +60,7 @@
   // sieved yet the n without such a factor sit at the bottom. The chart shows the lowest 2,000 n of each
   // column, where the sieve works; the rest of a column holds small factors and is cut off at the top.
   // The P-1 factor sizes of the earlier work are drawn on the History page.
-  var G = { w: 1160, h: 668, L: 64, R: 1100, T: 96, B: 616 };
+  var G = { w: 1160, h: 668, L: 64, R: 1140, T: 96, B: 616 };
   var SHOWN = 2000, LY_MAX = 14;   // ly-0 … ly-14 in site.css; larger factors take the last colour
 
   function bigChart(p, sum, primesDoc, site) {
@@ -145,18 +145,6 @@
     for (m = 1; m < 10; m++) { var gx = r1(X(m * 1e6)); g.push('<line x1="' + gx + '" y1="' + G.T + '" x2="' + gx + '" y2="' + G.B + '"></line>'); }
     for (v = gStep; v < top; v += gStep) g.push('<line x1="' + G.L + '" y1="' + r1(Y(v)) + '" x2="' + G.R + '" y2="' + r1(Y(v)) + '"></line>');
     o.push('<g class="grid over">' + g.join('') + '</g>');
-
-    // the layers of the last column, named on the right
-    var lastCol = cols - 1, base2 = 0, names = [];
-    stackOf(p, lastCol).forEach(function (s) {
-      var lo2 = base2, hi2 = Math.min(base2 + s[1], top);
-      base2 += s[1];
-      if (!s[1] || lo2 >= top || Y(lo2) - Y(hi2) < 9) return;
-      var name = s[0].indexOf('ly-') === 0 ? layerName(+s[0].slice(3)) :
-        (s[0] === 'todo' || s[0] === 'plan-wash') ? '≥ 10⁷' : '';
-      if (name) names.push('<text x="' + (G.R + 6) + '" y="' + r1((Y(lo2) + Y(hi2)) / 2 + 4) + '">' + name.replace(' – ', '–') + '</text>');
-    });
-    o.push('<text class="axis-title end" x="' + (G.w - 2) + '" y="' + (G.T - 8) + '">SMALLEST p</text>', names.join(''));
 
     // axes
     var ax = ['<line class="axis" x1="' + G.L + '" y1="' + G.B + '" x2="' + G.R + '" y2="' + G.B + '"></line>'];
