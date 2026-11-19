@@ -409,7 +409,7 @@
   'use strict';
   var S = window.Site, fmt = S.fmt, esc = S.esc;
   var el = function (id) { return document.getElementById(id); };
-  var HANDLE = /^[\p{L}\p{N} ._\-()[\]+#]+$/u, HANDLE_KEY = '2n25.handle';
+  var HANDLE = /^[\p{L}\p{N} ._\-()[\]+#]+$/u, HANDLE_KEY = '2n25.handle', COMPUTER_KEY = '2n25.computer';
   var MAX_N = 1e7, SHOW = 8, STEP = 5000;
   var L = { textBytes: 3 * 1024 * 1024, factorsPerCheck: 150, maxP: 1125899906842624, uploadsPerDay: 20 };
   var tf = { endpoint: '', open: false, issues: '#', files: {}, plan: null, busy: false, run: 0, sent: {} };
@@ -425,9 +425,16 @@
   }
   function issueLink(text) { return '<a href="' + esc(tf.issues) + '">' + (text || 'GitHub issue') + '</a>'; }
 
-  var handleInput = el('tf-handle'), noteInput = el('tf-note'), fileInput = el('tf-file'), drop = el('tf-drop');
-  handleInput.value = recall(HANDLE_KEY);
+  var handleInput = el('tf-handle'), computerInput = el('tf-computer'), noteInput = el('tf-note'), fileInput = el('tf-file'), drop = el('tf-drop');
+  (function () {
+    // a name saved as "Kelvinizer - w1g0" before the Computer field existed fills both fields
+    var h = recall(HANDLE_KEY), c = recall(COMPUTER_KEY), m = /^(.*?\S)(?:\s+-\s*|\s*-\s+)(\S.*)$/.exec(h);
+    if (m) { h = m[1]; c = c || m[2]; }
+    handleInput.value = h;
+    computerInput.value = c;
+  })();
   handleInput.addEventListener('change', function () { store(HANDLE_KEY, handleInput.value.trim()); });
+  computerInput.addEventListener('change', function () { store(COMPUTER_KEY, computerInput.value.trim()); });
   fileInput.addEventListener('change', function () { readFiles(fileInput.files); });
   ['dragenter', 'dragover'].forEach(function (t) {
     drop.addEventListener(t, function (e) { e.preventDefault(); drop.classList.add('over'); });
@@ -700,13 +707,17 @@
   function send() {
     var plan = tf.plan;
     if (!plan || !plan.ok || tf.busy || !tf.open) return;
-    var handle = handleInput.value.replace(/\s+/g, ' ').trim();
-    if (handle && (handle.length > 40 || !HANDLE.test(handle))) {
-      el('tf-result').innerHTML = msg('err', 'The name for credit may use letters, digits, spaces and . _ - ( ) [ ] + # (at most 40 characters).');
-      handleInput.focus();
+    // the upload carries one name, "Name - Computer"; the site shows the two parts in separate columns
+    var name = handleInput.value.replace(/\s+/g, ' ').trim(), computer = computerInput.value.replace(/\s+/g, ' ').trim();
+    var handle = computer ? (name || 'anonymous') + ' - ' + computer : name;
+    var wrong = name && !HANDLE.test(name) ? handleInput : computer && !HANDLE.test(computer) ? computerInput : handle.length > 40 ? computerInput : null;
+    if (wrong) {
+      el('tf-result').innerHTML = msg('err', 'The name for credit and the computer may use letters, digits, spaces and . _ - ( ) [ ] + #, at most 40 characters for both together.');
+      wrong.focus();
       return;
     }
-    store(HANDLE_KEY, handle);
+    store(HANDLE_KEY, name);
+    store(COMPUTER_KEY, computer);
     var note = noteInput.value.trim().slice(0, 500), log = plan.log || {};
     var todo = [], doneChecks = 0;
     plan.parts.forEach(function (p, i) { if (!tf.sent[i]) todo.push(i); });
@@ -763,7 +774,7 @@
       if (ok.length) {
         var factors = ok.reduce(function (s, f) { return s + (f.factors || 0); }, 0), n = ok.reduce(function (s, f) { return s + (f.entries || 0); }, 0);
         h.push(msg('ok', '<b>Uploaded ' + plural(factors, 'factor') + ' for ' + plural(n, 'n', 'n') + (ok.length > 1 ? ' in ' + ok.length + ' uploads' : '') +
-          ', each checked again by the server.</b> Thank you' + (handle ? ', ' + esc(handle) : '') + '! The site shows them after the next update.' +
+          ', each checked again by the server.</b> Thank you' + (name ? ', ' + esc(name) : '') + '! The site shows them after the next update.' +
           '<br><span class="small mono">' + ok.map(function (f) { return esc(f.id); }).join(' · ') + '</span>'));
       }
       if (stopped) {
