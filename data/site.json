@@ -1,5 +1,10 @@
 {
  "credit": "Kelvinizer",
+ "run_by": "Boyan H",
+ "next_sieve": {
+  "p_from": 200000000000000,
+  "p_to": 1000000000000000
+ },
  "oeis": "A379020",
  "links": {
   "repo": "https://github.com/RP-12000/2n-25",
