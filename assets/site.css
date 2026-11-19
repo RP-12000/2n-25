@@ -466,6 +466,13 @@ pre.code { margin: 10px 0 0; padding: 14px 16px; background: var(--code-bg); col
 .bars-list .meter { margin: 0; }
 .key.wash { background: var(--accent-wash); outline: 1px solid var(--accent-line); }
 .key.wash2 { background: var(--accent-soft); outline: 1px solid var(--accent-line); }
+/* P-1 factor sizes on the Sieve page: p below 10^13, 10^14 and 10^15, darker the smaller p */
+.chart .pz-1 { fill: var(--accent); fill-opacity: 0.24; }
+.chart .pz-2 { fill: var(--accent); fill-opacity: 0.14; }
+.chart .pz-3 { fill: var(--accent); fill-opacity: 0.06; }
+.key.pz-1 { background: color-mix(in srgb, var(--accent) 24%, var(--surface)); outline: 1px solid var(--accent-line); }
+.key.pz-2 { background: color-mix(in srgb, var(--accent) 14%, var(--surface)); outline: 1px solid var(--accent-line); }
+.key.pz-3 { background: color-mix(in srgb, var(--accent) 6%, var(--surface)); outline: 1px solid var(--accent-line); }
 table.data tr.group td { font-weight: 500; }
 table.data td.big { min-width: 0; }
 table.data td.wrap.num { min-width: 120px; }

@@ -1528,7 +1528,7 @@ def build(archive_root, out_dir, content_path, live_path=None):
         if most not in together:
             together.append(most)            # the run that found the most primes at once
     # for how many of the n P-1 factored a sieve to each planned depth would have found a factor anyway
-    thresholds = {2 ** 32, 10 ** 12, 10 ** 13, 10 ** 14, int(site.get("sieve_target") or 10 ** 14)}
+    thresholds = {2 ** 32, 10 ** 12, 10 ** 13, 10 ** 14, 10 ** 15, int(site.get("sieve_target") or 10 ** 14)}
     thresholds |= {int(s["p_to"]) for s in site.get("sieve_plan", []) if s.get("p_to")}
     first = sorted(smallest.values())
     below = [[t, bisect.bisect_left(first, t)] for t in sorted(thresholds)]

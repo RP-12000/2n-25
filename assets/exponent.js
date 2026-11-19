@@ -733,11 +733,12 @@
     var round = function (x) { return x % 100000 < 2; };   // an old origin.txt names both ends: 0 200000
     return round(b[0]) && round(b[1]) ? S.rangeLabel(b[0] - b[0] % 100000, b[1] - b[1] % 100000) : fmt(b[0]) + ' – ' + fmt(b[1] - 1);
   }
-  // "Kelvinizer - w2g0": who sent the run, and the computer it ran on
+  // "Kelvinizer - w2g0": who sent the run, and the computer it ran on; the hyphen needs a space on at least one
+  // side ("Yicheng X- w1g0" too), so a hyphen inside a name ("Jean-Luc") does not split it
   function whoAndComputer(h) {
     h = String(h || ctx.site.credit);
-    var i = h.indexOf(' - ');
-    return i > 0 ? [h.slice(0, i), h.slice(i + 3)] : [h, ''];
+    var m = /^(.*?\S)(?:\s+-\s*|\s*-\s+)(\S.*)$/.exec(h);
+    return m ? [m[1], m[2]] : [h, ''];
   }
   function runKey(x) { return [x.p[0], x.p[1], x.end || '', x.before ? 1 : 0].join('|'); }
 

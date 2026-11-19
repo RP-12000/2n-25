@@ -280,18 +280,18 @@
     document.getElementById('pm1-title').textContent = 'Why P-1 stopped at ' + S.M(stop);
     var below = {};
     (sv.pm1_factors_below || []).forEach(function (t) { below[t[0]] = t[1]; });
-    var target = site.sieve_target || 1e14;
-    var firstStep = (site.sieve_plan || [])[0];
-    var p1 = firstStep ? firstStep.p_to : 1e12;
+    // three p ranges marked on the chart: below 10^13, 10^14 and 10^15, each with the share of the n P-1 factored
+    // that have a factor there (a sieve that deep would have removed them)
+    var zones = [1e13, 1e14, 1e15];
     var share = function (p) { return below[p] !== undefined ? below[p] / nFact : null; };
-    var s1 = share(p1), s2 = share(target);
+    var s1 = share(zones[0]), s2 = share(zones[1]);
     var note = 'Sizes of the ' + fmt(total) + ' prime factors Prime95 P-1 found for ' + S.rangeLabel(pmRows[0].lo, stop) + '.';
     if (sv.pm1_composite) {
       note += ' ' + fmt(sv.pm1_composite) + ' of its ' + fmt(nFact) + ' results were the product of two or more primes found at once; they are split here.';
     }
     if (s1 !== null && s2 !== null) {
-      note += ' For ' + Math.round(s1 * 100) + '% of the n it factored, one of the factors is below ' + S.depth(p1) + ' (' + Math.round(s2 * 100) +
-        '% below ' + S.depth(target) + '), where the new sieve removes the same n more cheaply.';
+      note += ' For ' + Math.round(s1 * 100) + '% of the n it factored, one of the factors is below ' + S.depth(zones[0]) + ' (' + Math.round(s2 * 100) +
+        '% below ' + S.depth(zones[1]) + '), where the new sieve removes the same n more cheaply.';
     }
     document.getElementById('pm1-note').innerHTML = note;
 
@@ -308,9 +308,10 @@
     var XL = function (lg) { return L + Math.max(0, Math.min(nb, lg - lo + 1)) * W; };
     var o = ['<svg class="chart small" viewBox="0 0 620 250" role="img" aria-label="Histogram of P-1 factor sizes from ' + lo + ' to ' + maxK +
       ' bits; the tallest bar has ' + fmt(Math.max.apply(null, counts)) + ' factors.">'];
-    var x2 = XL(Math.log2(target)), x1 = XL(Math.log2(p1));
-    if (s2 !== null) o.push('<rect class="wash" x="' + L + '" y="' + T + '" width="' + S.r1(x2 - L) + '" height="' + (B - T) + '"></rect>');
-    if (s1 !== null) o.push('<rect class="wash-2" x="' + L + '" y="' + T + '" width="' + S.r1(x1 - L) + '" height="' + (B - T) + '"></rect>');
+    var zx = [L].concat(zones.map(function (p) { return XL(Math.log2(p)); }));
+    zones.forEach(function (p, i) {
+      if (zx[i + 1] > zx[i]) o.push('<rect class="pz-' + (i + 1) + '" x="' + S.r1(zx[i]) + '" y="' + T + '" width="' + S.r1(zx[i + 1] - zx[i]) + '" height="' + (B - T) + '"></rect>');
+    });
     var g = [], yl = [];
     for (var v = 0; v <= top + 1e-9; v += step) {
       if (v > 0) g.push('<line x1="' + L + '" y1="' + S.r1(Y(v)) + '" x2="' + R + '" y2="' + S.r1(Y(v)) + '"></line>');
@@ -332,9 +333,10 @@
     if (over) xl.push('<text class="mid" x="' + S.r1(L + (nb - 0.5) * W) + '" y="' + (B + 18) + '">' + (cap + 1) + '+</text>');
     o.push(xl.join('') + '<text class="sans mid" x="' + ((L + R) / 2) + '" y="' + (B + 38) + '">factor size in bits</text></svg>');
     document.getElementById('pm1-chart').innerHTML = o.join('');
-    var lg = [];
-    if (s1 !== null) lg.push('<span><i class="key wash2" aria-hidden="true"></i>p &lt; ' + S.depth(p1) + ' (next sieve stage): ' + Math.round(s1 * 100) + '% of the n</span>');
-    if (s2 !== null) lg.push('<span><i class="key wash" aria-hidden="true"></i>p &lt; ' + S.depth(target) + ' (planned depth): ' + Math.round(s2 * 100) + '% of the n</span>');
+    var lg = zones.map(function (p, i) {
+      var s = share(p);
+      return '<span><i class="key pz-' + (i + 1) + '" aria-hidden="true"></i>p &lt; ' + S.depth(p) + (s !== null ? ': ' + Math.round(s * 100) + '% of the n' : '') + '</span>';
+    });
     if (over) lg.push('<span><i class="key" style="background:var(--axis)" aria-hidden="true"></i>' + (cap + 1) + ' bits or more: ' + fmt(over) + '</span>');
     document.getElementById('pm1-legend').innerHTML = lg.join('');
 
