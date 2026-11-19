@@ -48,7 +48,7 @@
       <div class="grow">
         <p>Mass Prime Siever 14.0 strikes out every n that has a factor below the limit. Any CUDA or OpenCL GPU helps; a free Kaggle session with two T4s works too.</p>
         <div class="facts-list" id="way-sieve">
-          <div><span>Next</span><span>p 10<sup>12</sup> – 10<sup>13</sup>, then to 10<sup>14</sup></span></div>
+          <div><span>Next</span><span>p 2 × 10<sup>14</sup> – 10<sup>15</sup></span></div>
           <div><span>One T4</span><span>≈ 3 × 10<sup>12</sup> per hour</span></div>
           <div><span>Session</span><span>Kaggle 2 × T4 · 11.5 h</span></div>
         </div>
@@ -89,18 +89,25 @@
         <li><span class="i" aria-hidden="true">4</span><div><b>Get credit</b><span>Results appear on the exponent pages under the name you choose. A reported prime shows as being verified while the project re-runs the test; then it goes to the OEIS and the PRP Records list with your name.</span></div></li>
       </ol>
     </div>
-    <div class="card">
-      <div class="card-head">
-        <h2>Example work lines</h2>
-        <div class="seg" role="tablist" aria-label="Program">
-          <button type="button" role="tab" id="tab-prp" aria-selected="true" aria-controls="work-panel">Prime95</button>
-          <button type="button" role="tab" id="tab-sieve" aria-selected="false" aria-controls="work-panel">Mass Prime Siever</button>
+    <div class="stack halves">
+      <div class="card">
+        <div class="card-head">
+          <h2>Example work lines</h2>
+          <div class="seg" role="tablist" aria-label="Program">
+            <button type="button" role="tab" id="tab-prp" aria-selected="true" aria-controls="work-panel">Prime95</button>
+            <button type="button" role="tab" id="tab-sieve" aria-selected="false" aria-controls="work-panel">Mass Prime Siever</button>
+          </div>
+        </div>
+        <div id="work-panel" role="tabpanel" aria-labelledby="tab-prp">
+          <p class="small mt12" id="work-file">worktodo.txt for Prime95 30.19 or later</p>
+          <pre class="code" id="work-code">PRP=1,2,n,-25</pre>
+          <p id="work-hint">Each line tests 1 × 2<sup>n</sup> − 25. Prime95 writes one JSON line per test to results.json.txt; that file is what you upload.</p>
         </div>
       </div>
-      <div id="work-panel" role="tabpanel" aria-labelledby="tab-prp">
-        <p class="small mt12" id="work-file">worktodo.txt for Prime95 30.19 or later</p>
-        <pre class="code" id="work-code">PRP=1,2,n,-25</pre>
-        <p id="work-hint">Each line tests 1 × 2<sup>n</sup> − 25. Prime95 writes one JSON line per test to results.json.txt; that file is what you upload.</p>
+      <div class="card">
+        <h2>About the project</h2>
+        <p class="body" id="about-text">The search looks for n where 2<sup>n</sup> − 25 is prime, sequence <a href="https://oeis.org/A379020">A379020</a> in the OEIS, and aims for a prime of about two million digits.</p>
+        <p><a href="history.html">Timeline, milestones and the work month by month →</a></p>
       </div>
     </div>
   </section>
@@ -181,28 +188,21 @@
     <div id="tf-result" class="form" aria-live="polite"></div>
   </section>
 
-  <section class="split" aria-label="About">
-    <div class="card">
-      <h2>About the project</h2>
-      <p class="body" id="about-text">The search looks for n where 2<sup>n</sup> − 25 is prime, sequence <a href="https://oeis.org/A379020">A379020</a> in the OEIS, and aims for a prime of about two million digits.</p>
-      <p><a href="history.html">Timeline, milestones and the work month by month →</a></p>
-    </div>
-    <div class="card" id="data">
-      <h2>Data files</h2>
-      <p>Every number on this site comes from static JSON files, rebuilt from the result files after each batch of work. They are free to reuse.</p>
-      <ul class="files">
-        <li><code>data/summary.json</code><span class="small muted">totals, frontier, latest results and daily counts</span></li>
-        <li><code>data/ranges.json</code><span class="small muted">one row per 0.2M of n: sieve depth, survivors, P-1 and PRP counts</span></li>
-        <li><code>data/primes.json</code><span class="small muted">every known n: who found it first and when, and this project’s test</span></li>
-        <li><code>data/sieve.json</code><span class="small muted">P-1 factor sizes and the survivor constant per range</span></li>
-        <li><code>data/progress.json</code><span class="small muted">the big chart on the Status page: per 25,000 n, what the sieve, P-1 and PRP left, and P-1 factors by size</span></li>
-        <li><code>data/site.json</code><span class="small muted">plans, sieve assignments and notes written by hand</span></li>
-        <li><code>data/n/3.55.json</code><span class="small muted">one file per 0.01M of n: every sieve survivor with its P-1 and PRP records</span></li>
-      </ul>
-      <p><a id="link-repo" href="https://github.com/RP-12000/2n-25">Source, data and build script on GitHub →</a></p>
-      <h3 class="mt16">Thanks</h3>
-      <p>George Woltman’s Prime95 does every PRP test. Henri Lifchitz’s PRP Records list tracks the large results. Kaggle’s free GPUs carry the deep sieve.</p>
-    </div>
+  <section class="card" id="data" aria-labelledby="data-title">
+    <h2 id="data-title">Data files</h2>
+    <p>Every number on this site comes from static JSON files, rebuilt from the result files after each batch of work. They are free to reuse.</p>
+    <ul class="files">
+      <li><code>data/summary.json</code><span class="small muted">totals, frontier, latest results and daily counts</span></li>
+      <li><code>data/ranges.json</code><span class="small muted">one row per 0.2M of n: sieve depth, survivors, P-1 and PRP counts</span></li>
+      <li><code>data/primes.json</code><span class="small muted">every known n: who found it first and when, and this project’s test</span></li>
+      <li><code>data/sieve.json</code><span class="small muted">P-1 factor sizes and the survivor constant per range</span></li>
+      <li><code>data/progress.json</code><span class="small muted">the big chart on the Status page: per 25,000 n, what the sieve, P-1 and PRP left, and P-1 factors by size</span></li>
+      <li><code>data/site.json</code><span class="small muted">plans, sieve assignments and notes written by hand</span></li>
+      <li><code>data/n/3.55.json</code><span class="small muted">one file per 0.01M of n: every sieve survivor with its P-1 and PRP records</span></li>
+    </ul>
+    <p><a id="link-repo" href="https://github.com/RP-12000/2n-25">Source, data and build script on GitHub →</a></p>
+    <h3 class="mt16">Thanks</h3>
+    <p>George Woltman’s Prime95 does every PRP test. Henri Lifchitz’s PRP Records list tracks the large results. Kaggle’s free GPUs carry the deep sieve.</p>
   </section>
 </main>
 <footer class="site-footer">

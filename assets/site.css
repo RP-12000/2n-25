@@ -167,6 +167,8 @@ p { text-wrap: pretty; }
 .chart-side > .card > .legend { margin-top: auto; padding-top: 12px; }
 .stack { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
 .stack > .card { flex: 1 1 auto; }
+/* Join page: example work lines over About, each half the height of the card beside them */
+.stack.halves > .card { flex: 1 1 0; }
 @media (max-width: 1040px) {
   .chart-side { grid-template-columns: minmax(0, 1fr); }
   .chart-side svg.chart { max-width: 720px; margin-inline: auto; }
@@ -403,13 +405,15 @@ pre.code { margin: 10px 0 0; padding: 14px 16px; background: var(--code-bg); col
 .facts-list > div > span:last-child { font-family: var(--mono); }
 .way { display: flex; flex-direction: column; }
 .way .grow { flex: 1; }
-.way .foot { margin-top: 14px; }
+.way .foot { margin-top: 10px; }
 .timeline { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
 .timeline li { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px; font-size: 13.5px; }
 .timeline time, .timeline .when { font: 12.5px var(--mono); color: var(--muted); padding-top: 1px; }
 .files { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; font-size: 13px; }
 .files li { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
 .files code { font-size: 12.5px; overflow-wrap: anywhere; }
+#data .files { grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr)); gap: 10px 32px; }
+#data .files li { align-content: start; }
 .form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 14px; }
 .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 16px; }
 .field { display: grid; gap: 6px; min-width: 0; }

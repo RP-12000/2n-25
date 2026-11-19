@@ -57,7 +57,6 @@
     el('up-status').textContent = 'unavailable';
   });
 
-  function round100(x) { return Math.round(x / 100) * 100; }
   function fillCards(site, rows, sum) {
     var M = S.model(site), links = site.links || {};
     var act = site.active || { lo: sum.frontier, hi: 5000000 };
@@ -86,14 +85,15 @@
         ' would keep that laptop busy for about ' + months + ' months on its own, so every extra machine shortens the wait for the next prime.';
     }
     var planned = (site.sieve_plan || []).filter(function (s) { return /^planned$/i.test(s.status || ''); });
-    if (planned.length) {
+    if (site.next_sieve && site.next_sieve.p_to) {
+      el('way-sieve').firstElementChild.lastElementChild.textContent = 'p ' + S.depth(site.next_sieve.p_from) + ' – ' + S.depth(site.next_sieve.p_to);
+    } else if (planned.length) {
       el('way-sieve').firstElementChild.lastElementChild.textContent = 'p ' + S.depth(planned[0].p_from) + ' – ' + S.depth(planned[0].p_to) +
         (planned.length > 1 ? ', then to ' + S.depth(planned[planned.length - 1].p_to) : '');
     }
     var prpRows = el('way-prp');
     prpRows.innerHTML = '<div><span>One test</span><span>' + S.cost(M.prpMinutes(act.lo)) + ' at n = ' + S.M(act.lo) + '</span></div>' +
-      '<div><span>Laptop</span><span>8 workers · ≈ ' + fmt(perDay) + ' tests a day</span></div>' +
-      (odd ? '<div><span>Queue</span><span>≈ ' + fmt(round100(M.survivors(odd, startAt))) + ' n after ' + S.depth(startAt) + ', smallest first</span></div>' : '');
+      '<div><span>Laptop</span><span>8 workers · ≈ ' + fmt(perDay) + ' tests a day</span></div>';
     var started = actRows.some(function (r) { return r.prp && r.prp.tests > 0; });
     var pill = el('prp-pill');
     if (started) { pill.className = 'pill accent'; pill.innerHTML = '<span class="dot"></span>Running'; }
@@ -102,7 +102,7 @@
 
   function fillAbout(site) {
     var goal = site.goal;
-    el('about-text').innerHTML = 'The search is run by ' + esc(site.credit || 'RP-12000') + '. It looks for n where 2<sup>n</sup> − 25 is prime, sequence <a href="' +
+    el('about-text').innerHTML = 'The search is run by ' + esc(site.run_by || site.credit || 'RP-12000') + '. It looks for n where 2<sup>n</sup> − 25 is prime, sequence <a href="' +
       esc(site.links && site.links.oeis || 'https://oeis.org/A379020') + '">' + esc(site.oeis || 'A379020') + '</a> in the OEIS' +
       (goal ? ', and aims for a prime of about ' + (goal.digits >= 1e6 ? (goal.digits / 1e6) + ' million' : fmt(goal.digits)) + ' digits (n ≈ ' + (goal.from_n / 1e6).toFixed(2) + 'M)' : '') + '.';
   }
