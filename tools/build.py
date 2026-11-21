@@ -92,19 +92,22 @@ PRPTOP = os.path.join(REPO, "archive", "prptop.json")  # Top PRP ranks, read onc
 MONTHS = {m: i + 1 for i, m in enumerate("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split())}
 RANGE_DIR = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*M\s*[~-]\s*(\d+(?:\.\d+)?)\s*M\s*$", re.I)
 NAME_ALIASES = {}       # content/site.json aliases: an old name -> the name the site shows instead
+OWN_NAME = {}           # credit -> "credit - credit_computer": the project's own name sent with no computer
 NAME_COMPUTER = re.compile(r"^(.*?\S)(\s+-\s*|\s*-\s+)(\S.*)$")  # "Name - computer", as the Exponent page splits it
 
 
 def shown_name(who):
     """The name a result is credited to on the site: a name content/site.json aliases renames is shown under its new
-    name, whether it is the whole name or the part before the computer ("Kelvinizer - w1g0" -> "Boyan H - w1g0")."""
+    name, whether it is the whole name or the part before the computer ("Kelvinizer - w1g0" -> "Boyan H - w1g0").
+    Work sent under the project's own name with no computer (the laptop's 0 - 10T sieve of 3.6M - 5M, uploaded as
+    "Kelvinizer") is the project's own work, on its own computer: "Boyan H - home"."""
     who = str(who).strip()
-    if who in NAME_ALIASES:
-        return NAME_ALIASES[who]
     m = NAME_COMPUTER.match(who)
-    if m and m.group(1) in NAME_ALIASES:
-        return NAME_ALIASES[m.group(1)] + m.group(2) + m.group(3)
-    return who
+    if who in NAME_ALIASES:
+        who = NAME_ALIASES[who]
+    elif m and m.group(1) in NAME_ALIASES:
+        who = NAME_ALIASES[m.group(1)] + m.group(2) + m.group(3)
+    return OWN_NAME.get(who, who)
 
 
 def name_only(who):
@@ -1289,11 +1292,14 @@ def build(archive_root, out_dir, content_path, live_path=None):
     trial_left = read_trial_left(os.path.join(content_dir, "trial_left.json"), notes)
     # old names stay out of data/site.json: the pages only ever see the new ones
     NAME_ALIASES.update({str(k).strip(): str(v).strip() for k, v in (site.pop("aliases", None) or {}).items()})
+    OWN_NAME.clear()
     credit = shown_name(site.get("credit", "RP-12000"))
     site["credit"] = credit                  # the pages compare names with it, so data/site.json names it as shown
     # the project's own work (the archive, and the Prime95 run on this PC) is credited as "name - computer", the way
     # an upload names itself: content/site.json credit and credit_computer
     own = credit + (" - " + str(site["credit_computer"]).strip() if site.get("credit_computer") else "")
+    if own != credit:
+        OWN_NAME[credit] = own
     arc = Archive(archive_root, own, notes)
     arc.confirmed = {int(n) for n in site.get("confirmed_primes", [])}
     arc.accepted_uploads = {str(x) for x in site.get("accepted_sieve_uploads", [])}
