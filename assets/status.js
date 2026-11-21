@@ -413,7 +413,7 @@
 
   function renderLatest(sum, site) {
     var rows = (sum.latest || []).slice(0, 8);
-    var showWho = rows.some(function (r) { return r.who && r.who !== site.credit; });
+    var showWho = rows.some(function (r) { return r.who && r.who !== S.own(site); });
     var h = '<table class="data"><thead><tr><th>Time (UTC)</th><th class="r">n</th><th class="text">Result</th><th>Res64</th><th class="r">FFT</th>' +
       (showWho ? '<th class="text">By</th>' : '') + '</tr></thead><tbody>' +
       rows.map(function (r) {

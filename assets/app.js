@@ -77,15 +77,37 @@
   // data/n/ and data/f/ hold one file per SHARD n, named by its first n in millions: summary.json's shard_size is
   // 0.01M (3.61 holds 3,610,000 to 3,619,999); data built before it said so have 0.1M per file (3.6)
   var SHARD = 100000;
+  // The browser and GitHub's servers keep a data file for up to 10 minutes, so right after a rebuild a page could
+  // get the new summary.json with an older copy of a range's files (an n the new sieve struck out still listed as
+  // a survivor, shown as waiting for a PRP test). summary.json is therefore always fetched fresh, and every other
+  // file as data/<name>.json?v=<the build time summary.json names>, so all the files a page reads come from one build.
+  function getJSON(name, url, opts) {
+    return fetch(url, opts).then(function (r) {
+      if (!r.ok) throw new Error('data/' + name + '.json answered HTTP ' + r.status);
+      return r.json();
+    });
+  }
   Site.load = function (name) {
     if (!cache[name]) {
-      cache[name] = fetch('data/' + name + '.json').then(function (r) {
-        if (!r.ok) throw new Error('data/' + name + '.json answered HTTP ' + r.status);
-        return r.json();
-      });
-      if (name === 'summary') cache[name] = cache[name].then(function (s) { if (s && s.shard_size) SHARD = s.shard_size; return s; });
+      if (name === 'summary') {
+        cache[name] = getJSON(name, 'data/summary.json?t=' + Math.floor(Date.now() / 60000), { cache: 'no-store' })
+          .then(function (s) { if (s && s.shard_size) SHARD = s.shard_size; return s; });
+      } else {
+        cache[name] = Site.load('summary').catch(function () { return null; }).then(function (s) {
+          return getJSON(name, 'data/' + name + '.json' + (s && s.generated ? '?v=' + encodeURIComponent(s.generated) : ''));
+        });
+      }
     }
     return cache[name];
+  };
+  // the name the project's own results are credited to, written the way an upload names itself: "Boyan H - home"
+  // (content/site.json credit and credit_computer)
+  Site.own = function (site) { return site.credit + (site.credit_computer ? ' - ' + site.credit_computer : ''); };
+  // "Boyan H - w2g0": who sent the work, and the computer it ran on; the hyphen needs a space on at least one side
+  // ("Yicheng X- w1g0" too), so a hyphen inside a name ("Jean-Luc") does not split it
+  Site.whoAndComputer = function (h) {
+    var m = /^(.*?\S)(?:\s+-\s*|\s*-\s+)(\S.*)$/.exec(String(h || ''));
+    return m ? [m[1], m[2]] : [String(h || ''), ''];
   };
   Site.shardSize = function () { return SHARD; };
   Site.shardName = function (n) {

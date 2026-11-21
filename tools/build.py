@@ -91,6 +91,26 @@ SPLIT_CACHE = os.path.join(REPO, "archive", "pm1_splits.json")  # composite P-1 
 PRPTOP = os.path.join(REPO, "archive", "prptop.json")  # Top PRP ranks, read once a day by tools/prptop_ranks.py
 MONTHS = {m: i + 1 for i, m in enumerate("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split())}
 RANGE_DIR = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*M\s*[~-]\s*(\d+(?:\.\d+)?)\s*M\s*$", re.I)
+NAME_ALIASES = {}       # content/site.json aliases: an old name -> the name the site shows instead
+NAME_COMPUTER = re.compile(r"^(.*?\S)(\s+-\s*|\s*-\s+)(\S.*)$")  # "Name - computer", as the Exponent page splits it
+
+
+def shown_name(who):
+    """The name a result is credited to on the site: a name content/site.json aliases renames is shown under its new
+    name, whether it is the whole name or the part before the computer ("Kelvinizer - w1g0" -> "Boyan H - w1g0")."""
+    who = str(who).strip()
+    if who in NAME_ALIASES:
+        return NAME_ALIASES[who]
+    m = NAME_COMPUTER.match(who)
+    if m and m.group(1) in NAME_ALIASES:
+        return NAME_ALIASES[m.group(1)] + m.group(2) + m.group(3)
+    return who
+
+
+def name_only(who):
+    """The person in "name - computer": who first found a prime is a person, not a computer."""
+    m = NAME_COMPUTER.match(str(who))
+    return m.group(1) if m else str(who)
 
 
 class Notes:
@@ -629,7 +649,7 @@ def uploaded_sieve(root, notes, accepted):
         run = up.get("run") or {}
         log = {"start": run.get("start") or None, "end": run.get("end") or None, "wall_s": float(run.get("wall_s") or 0),
                "program": run.get("program") or "Mass Prime Siever 12.0", "named": bool(run.get("program"))}
-        who = str(up.get("handle") or "anonymous")[:40]
+        who = shown_name(up.get("handle") or "anonymous")[:40]
         for e in read_mps_file(path, notes, log):
             odd = len(range(max(e["n0"], 5) | 1, min(e["n1"], N_MAX), 2))
             # small primes do not follow ln(ln p1 / ln p0) for this sequence (3 and 5 never divide 2^n - 25),
@@ -1165,7 +1185,7 @@ class Archive:
         except ValueError:
             self.notes.add("unreadable submission.json", path)
             return
-        user = str(sub.get("handle") or "anonymous")[:40]
+        user = shown_name(sub.get("handle") or "anonymous")[:40]
         for line in sub.get("lines", []):
             try:
                 j = json.loads(line)
@@ -1267,8 +1287,14 @@ def build(archive_root, out_dir, content_path, live_path=None):
     content_dir = os.path.dirname(os.path.abspath(content_path))
     static_layers = read_layers(os.path.join(content_dir, "sieve_layers.json"), notes)
     trial_left = read_trial_left(os.path.join(content_dir, "trial_left.json"), notes)
-    credit = site.get("credit", "RP-12000")
-    arc = Archive(archive_root, credit, notes)
+    # old names stay out of data/site.json: the pages only ever see the new ones
+    NAME_ALIASES.update({str(k).strip(): str(v).strip() for k, v in (site.pop("aliases", None) or {}).items()})
+    credit = shown_name(site.get("credit", "RP-12000"))
+    site["credit"] = credit                  # the pages compare names with it, so data/site.json names it as shown
+    # the project's own work (the archive, and the Prime95 run on this PC) is credited as "name - computer", the way
+    # an upload names itself: content/site.json credit and credit_computer
+    own = credit + (" - " + str(site["credit_computer"]).strip() if site.get("credit_computer") else "")
+    arc = Archive(archive_root, own, notes)
     arc.confirmed = {int(n) for n in site.get("confirmed_primes", [])}
     arc.accepted_uploads = {str(x) for x in site.get("accepted_sieve_uploads", [])}
     arc.factors_not_kept = [(int(x["lo"]), int(x["hi"])) for x in site.get("sieve_factors_not_kept", [])]
@@ -1456,7 +1482,7 @@ def build(archive_root, out_dir, content_path, live_path=None):
         "counts": counts,
         "largest_prime": max(primes_all) if primes_all else None,
         "largest_prime_digits": digits_of(max(primes_all)) if primes_all else None,
-        "latest": [{"t": t, "n": n, "s": r[1], "res64": r[2], "fft": r[3], "who": arc.users[r[7]] if len(r) > 7 else credit} for t, n, r in latest],
+        "latest": [{"t": t, "n": n, "s": r[1], "res64": r[2], "fft": r[3], "who": arc.users[r[7]] if len(r) > 7 else own} for t, n, r in latest],
         "daily_prp": sorted([d, c] for d, c in arc.daily_prp.items()),
         "daily_pm1": sorted([d, c] for d, c in arc.daily_pm1.items()),
         "frontier_series": series,
@@ -1484,11 +1510,11 @@ def build(archive_root, out_dir, content_path, live_path=None):
         if n < disc_below:
             by, when = (disc_n.get(str(n)) or [disc_unknown, ""])[:2]
         else:
-            by, when = rec.get("who", credit), rec.get("found", "")
+            by, when = name_only(rec.get("who", credit)), rec.get("found", "")
         primes.append({
             "n": n, "digits": digits_of(n), "found": rec.get("found", ""), "fft": rec.get("fft", 0),
             "proof_power": rec.get("proof_power", 0), "program": rec.get("program", ""),
-            "who": rec.get("who", credit if rec else ""),
+            "who": rec.get("who", own if rec else ""),
             "how": "PRP-3" if rec else "trial division",
             "discoverer": by, "discovered": when,     # first found by, and when (year-month before this project)
             "rank": ranks["values"].get(str(n), ""),

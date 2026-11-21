@@ -52,7 +52,8 @@
   function rowOf(n) { return ctx.rows[Math.floor(n / 200000)] || null; }
   function prevPrime(n) { var p = null; ctx.primes.forEach(function (x) { if (x < n) p = x; }); return p; }
   function nextPrime(n) { for (var i = 0; i < ctx.primes.length; i++) if (ctx.primes[i] > n) return ctx.primes[i]; return null; }
-  function user(shard, rec, pos) { return rec.length > pos && shard ? shard.users[rec[pos]] : ctx.site.credit; }
+  function own() { return S.own(ctx.site); }
+  function user(shard, rec, pos) { return rec.length > pos && shard ? shard.users[rec[pos]] : own(); }
   function program(shard, rec, pos) { return shard && shard.programs[rec[pos]] ? S.prog(shard.programs[rec[pos]]) : 'Prime95'; }
 
   function decimal(n) {
@@ -439,9 +440,9 @@
         tests = [['Proof', 'trial division', state('Prime', 'prime')]];
       } else {
         // a prime known before this project: name who found it first, then this project's re-test
-        var before = pInfo.discoverer && pInfo.discoverer !== (pInfo.who || site.credit);
+        var before = pInfo.discoverer && pInfo.discoverer !== whoAndComputer(pInfo.who || own())[0];
         line = (before ? 'First found by ' + esc(pInfo.discoverer) + (pInfo.discovered ? ', ' + esc(pInfo.discovered) : '') + ' · PRP-3 re-test ' : 'PRP-3 result ') +
-          esc(pInfo.found) + ' UTC · ' + esc(pInfo.who || site.credit) + (pInfo.program ? ' · ' + esc(pInfo.program) : '');
+          esc(pInfo.found) + ' UTC · ' + esc(whoAndComputer(pInfo.who || own()).filter(Boolean).join(' · ')) + (pInfo.program ? ' · ' + esc(pInfo.program) : '');
         tests = [['PRP-3', 'probable prime', state('Probable prime', 'prime')],
           pInfo.proof_power ? ['Proof', 'power ' + pInfo.proof_power, state('Kept · not certified yet', 'muted')] : ['Proof', '—', '—']];
       }
@@ -614,7 +615,7 @@
       (info.factors || []).forEach(function (f) {
         var x = f.src;
         out.push(factorRow(f.p, S.when(x && x.end ? x.end : row.sieve && row.sieve.end), 'TF',
-          f.small ? '—' : x && info.ff ? info.ff.users[x.by] || ctx.site.credit : f.by || ctx.site.credit, 4000));
+          f.small ? '—' : x && info.ff ? info.ff.users[x.by] || own() : f.by || own(), 4000));
         bitsKnown += bitsOf(f.p);
         primes += 1;
       });
@@ -626,17 +627,17 @@
       info.factors.forEach(function (f) {
         var x = f.src, who, date;
         if (x) {
-          who = f.small ? '—' : users[x.by] || ctx.site.credit;
+          who = f.small ? '—' : users[x.by] || own();
           date = S.when(x.end);
         } else if (kind === 'sieve') {
           // a range sieved before the factor files (or by the older sievers): the row's sieve
-          who = f.small ? '—' : f.by || ctx.site.credit;
+          who = f.small ? '—' : f.by || own();
           date = S.when(row.sieve && row.sieve.end);
         } else if (f.small) {
           who = '—'; date = '—';             // trial division on this page
         } else {
           var part = row.sieve_part || {};
-          who = f.by || ctx.site.credit; date = S.when(part.end);
+          who = f.by || own(); date = S.when(part.end);
         }
         out.push(factorRow(f.p, date, 'TF', who, 4000));
         known += bitsOf(f.p);
@@ -668,10 +669,12 @@
     var html = '';
     if (out.length) {
       html = '<div class="table-wrap"><table class="data"><thead><tr><th class="r">Factor p</th><th class="r">Digits</th><th class="r">Bits</th><th>p − 1</th>' +
-        '<th>Found</th><th>Method</th><th class="text">Who</th><th class="r">Min B1</th><th class="r">Min B2</th></tr></thead><tbody>' +
+        '<th>Found</th><th>Method</th><th class="text">Who</th><th class="text">Computer</th><th class="r">Min B1</th><th class="r">Min B2</th></tr></thead><tbody>' +
         out.map(function (r) {
+          var h = r.who === '—' ? ['—', ''] : whoAndComputer(r.who);
           return '<tr><td class="r">' + r.p + '</td><td class="r">' + r.digits + '</td><td class="r">' + r.bits + '</td><td>' + r.pm1 +
-            '</td><td>' + r.date + '</td><td>' + esc(r.how) + '</td><td class="text">' + esc(r.who) + '</td><td class="r">' + r.b1 + '</td><td class="r">' + r.b2 + '</td></tr>';
+            '</td><td>' + r.date + '</td><td>' + esc(r.how) + '</td><td class="text">' + esc(h[0]) + '</td><td class="text">' + (h[1] ? esc(h[1]) : '<span class="muted">—</span>') +
+            '</td><td class="r">' + r.b1 + '</td><td class="r">' + r.b2 + '</td></tr>';
         }).join('') + '</tbody></table></div>' + (text ? '<p class="small">' + esc(text) + '</p>' : '');
     } else {
       html = '<p class="body">' + esc(text) + '</p>';
@@ -733,13 +736,8 @@
     var round = function (x) { return x % 100000 < 2; };   // an old origin.txt names both ends: 0 200000
     return round(b[0]) && round(b[1]) ? S.rangeLabel(b[0] - b[0] % 100000, b[1] - b[1] % 100000) : fmt(b[0]) + ' – ' + fmt(b[1] - 1);
   }
-  // "Kelvinizer - w2g0": who sent the run, and the computer it ran on; the hyphen needs a space on at least one
-  // side ("Yicheng X- w1g0" too), so a hyphen inside a name ("Jean-Luc") does not split it
-  function whoAndComputer(h) {
-    h = String(h || ctx.site.credit);
-    var m = /^(.*?\S)(?:\s+-\s*|\s*-\s+)(\S.*)$/.exec(h);
-    return m ? [m[1], m[2]] : [h, ''];
-  }
+  // who sent the work, and the computer it ran on (app.js Site.whoAndComputer); the project's own work without a name
+  function whoAndComputer(h) { return S.whoAndComputer(h || own()); }
   function runKey(x) { return [x.p[0], x.p[1], x.end || '', x.before ? 1 : 0].join('|'); }
 
   /* Every sieve run over n, from the slices of data/f/<x.xx>.json that cover it, smallest p first; a slice the old
@@ -761,7 +759,7 @@
       if (!st.length) runs.push(base);
       st.forEach(function (r) {
         var top = r.depth ? Number(r.depth) : base.p[1];
-        runs.push(Object.assign({}, base, { computer: r.name || base.computer, prog: r.prog || base.prog, st: r.st, end: r.end || base.end,
+        runs.push(Object.assign({}, base, { computer: base.computer || r.name, station: base.computer && r.name, prog: r.prog || base.prog, st: r.st, end: r.end || base.end,
           s: r.s, block: r.n, p: [base.p[0], top], pb: [base.pb[0], BigInt(String(r.depth || x.p[1]))] }));
       });
     });
@@ -810,7 +808,7 @@
       var when = 'Finished ' + String(r.end || '').slice(0, 19) + ' UTC' + (r.st ? '; started ' + String(r.st).slice(0, 19) : '');
       var tip = r.s ? fmt(Math.round(r.s)) + ' s of run time' + (odd ? ' for the ' + fmt(odd) + ' odd n in ' + blockText(r.block) : '') : '';
       return '<tr><td title="' + esc(when) + '">' + stamp(r.end) + '</td><td class="text">' + esc(r.who) + '</td>' +
-        (showPC ? '<td class="text">' + (r.computer ? esc(r.computer) : '<span class="muted">—</span>') + '</td>' : '') +
+        (showPC ? '<td class="text"' + (r.station ? ' title="' + esc(r.station) + '"' : '') + '>' + (r.computer ? esc(r.computer) : '<span class="muted">—</span>') + '</td>' : '') +
         (showProg ? '<td class="text">' + (esc(S.prog(r.prog)) || '—') + '</td>' : '') +
         '<td class="r">' + pText(r.p[0]) + '</td><td class="r">' + pText(r.p[1]) + '</td>' +
         (r.found.length ? '<td class="r">' + lines(function (f) { return S.fmtBig(f.p); }) + '</td><td class="r">' + lines(function (f) { return f.p.length; }) +
@@ -866,17 +864,17 @@
         var x = F ? (info.p1 || []).filter(function (y) { return y.F === F; })[0] : null;
         if (F) qs = qs.concat(x && x.parts ? x.parts.map(String) : [F]);
       });
-      H.push([esc(r[0]), 'P-1', esc(program(info.shard, r, 4)) + (who !== ctx.site.credit ? ' · ' + esc(who) : ''),
+      H.push([esc(r[0]), 'P-1', esc(program(info.shard, r, 4)),
         'B1 = ' + fmt(r[1]) + (r[2] ? ', B2 = ' + fmt(r[2]) : ', stage 1'),
-        !qs.length ? 'no factor' : qs.length === 1 ? 'factor ' + wrapBig(qs[0]) : fmt(qs.length) + ' factors, listed above']);
+        !qs.length ? 'no factor' : qs.length === 1 ? 'factor ' + wrapBig(qs[0]) : fmt(qs.length) + ' factors, listed above', who]);
     });
     (info.prp || []).forEach(function (r) {
       var who = user(info.shard, r, 7);
-      H.push([esc(r[0]), 'PRP-3', esc(program(info.shard, r, 6)) + (who !== ctx.site.credit ? ' · ' + esc(who) : ''),
-        'FFT ' + S.fft(r[3]) + (r[4] ? ' · proof power ' + r[4] : ''), r[1] === 'P' ? 'probable prime' : r[1] === 'R' ? 'reported probable prime' : 'composite · ' + esc(r[2])]);
+      H.push([esc(r[0]), 'PRP-3', esc(program(info.shard, r, 6)),
+        'FFT ' + S.fft(r[3]) + (r[4] ? ' · proof power ' + r[4] : ''), r[1] === 'P' ? 'probable prime' : r[1] === 'R' ? 'reported probable prime' : 'composite · ' + esc(r[2]), who]);
     });
     if (kind === 'prime' && !tiny && !(info.prp || []).length) {
-      H.push([esc(pInfo.found), 'PRP-3', esc(pInfo.program || ''), 'FFT ' + S.fft(pInfo.fft) + (pInfo.proof_power ? ' · proof power ' + pInfo.proof_power : ''), 'probable prime']);
+      H.push([esc(pInfo.found), 'PRP-3', esc(pInfo.program || ''), 'FFT ' + S.fft(pInfo.fft) + (pInfo.proof_power ? ' · proof power ' + pInfo.proof_power : ''), 'probable prime', pInfo.who]);
     }
     if (again) H.push(again);
     var el = document.getElementById('history');
@@ -884,8 +882,12 @@
       var p1 = H.some(function (h) { return h[1] === 'P-1'; }), prp = H.some(function (h) { return h[1] !== 'P-1'; });
       el.innerHTML = (runs.length ? sieveTable(info, runs) : '') + (H.length ? '<div class="hist-sec">' +
         (runs.length ? '<h3>' + (p1 && prp ? 'P-1 and PRP' : p1 ? 'P-1' : 'PRP') + '</h3>' : '') +
-        '<div class="table-wrap"><table class="data"><thead><tr><th>Date (UTC)</th><th class="text">Work</th><th class="text">Program</th><th>Parameters</th><th>Result</th></tr></thead><tbody>' +
-        H.map(function (h) { return '<tr><td>' + h[0] + '</td><td class="text">' + h[1] + '</td><td class="text">' + h[2] + '</td><td>' + h[3] + '</td><td class="wrap">' + h[4] + '</td></tr>'; }).join('') +
+        '<div class="table-wrap"><table class="data"><thead><tr><th>Date (UTC)</th><th class="text">Work</th><th class="text">Who</th><th class="text">Computer</th><th class="text">Program</th><th>Parameters</th><th>Result</th></tr></thead><tbody>' +
+        H.map(function (h) {
+          var w = h[5] === '' ? ['', ''] : whoAndComputer(h[5]), dash = '<span class="muted">—</span>';
+          return '<tr><td>' + h[0] + '</td><td class="text">' + h[1] + '</td><td class="text">' + (w[0] ? esc(w[0]) : dash) + '</td><td class="text">' + (w[1] ? esc(w[1]) : dash) +
+            '</td><td class="text">' + h[2] + '</td><td>' + h[3] + '</td><td class="wrap">' + h[4] + '</td></tr>';
+        }).join('') +
         '</tbody></table></div></div>' : '');
     } else {
       var t = { queued: 'No work yet. ' + ((ctx.site.stages && ctx.site.stages[0]) ? S.supHTML(esc(ctx.site.stages[0].title)) + ' is next.' : ''),
