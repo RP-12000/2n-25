@@ -21,7 +21,7 @@
     },
     sieve: {
       file: 'worktodo.txt for Mass Prime Siever (prime.ini: UseGPU=1, GPU_backend=auto)',
-      code: 'Factor=2,-25,1000000000000,2000000000000,3600000,5000000\nFactor=2,-25,2000000000000,3000000000000,3600000,5000000',
+      code: 'Factor=2,-25,1000000000000,2000000000000,3600000,5000000\nFactor=2,-25,2000000000000,3000000000000,3600000,5000000\nFactor=2,-25,3000000000000,4000000000000,3600000,5000000',
       hint: 'Fields: base 2, c = −25, p from P0 to P1, n from N0 to N1. Two more fields sieve one residue class only, for example <code>,2,1</code> for odd n.'
     }
   };
@@ -411,7 +411,10 @@
   var el = function (id) { return document.getElementById(id); };
   var HANDLE = /^[\p{L}\p{N} ._\-()[\]+#]+$/u, HANDLE_KEY = '2n25.handle', COMPUTER_KEY = '2n25.computer';
   var MAX_N = 1e7, SHOW = 8, STEP = 5000;
-  var L = { textBytes: 3 * 1024 * 1024, factorsPerCheck: 150, maxP: 1125899906842624, uploadsPerDay: 20 };
+  var L = { textBytes: 3 * 1024 * 1024, factorsPerCheck: 150, factorsPerCheckBig: 40, maxP: 1125899906842624, uploadsPerDay: 20 };
+  var P50 = 1125899906842624; // from 2^50 up the server checks factors with BigInt, fewer per step
+  function perCheck(head) { return head.P1 > P50 ? L.factorsPerCheckBig : L.factorsPerCheck; }
+  function maxP() { return '2' + S.sup(Math.round(Math.log2(L.maxP + 1))); } // 2^50 or 2^53
   var tf = { endpoint: '', open: false, issues: '#', files: {}, plan: null, busy: false, run: 0, sent: {} };
 
   function store(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage blocked */ } }
@@ -458,8 +461,8 @@
     return fetch(tf.endpoint + '/status', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
       var t = j && j.limits && j.limits.tf;
       tf.open = Boolean(j && j.ok && j.accepting && t && j.sieve !== false);
-      if (t) ['textBytes', 'factorsPerCheck', 'maxP', 'uploadsPerDay'].forEach(function (k) { if (t[k] > 0) L[k] = t[k]; });
-      el('tf-status').textContent = tf.open ? 'open · p below 2' + S.sup(50) : t ? 'not accepting uploads right now' : 'not open yet';
+      if (t) ['textBytes', 'factorsPerCheck', 'factorsPerCheckBig', 'maxP', 'uploadsPerDay'].forEach(function (k) { if (t[k] > 0) L[k] = t[k]; });
+      el('tf-status').textContent = tf.open ? 'open · p below ' + maxP() : t ? 'not accepting uploads right now' : 'not open yet';
       if (!tf.open) el('tf-result').innerHTML = msg('info', 'The upload server does not take sieve output yet. Until it does, attach <code>results.json</code> and <code>siever.log</code> to a ' + issueLink() + '.');
       refresh();
     });
@@ -543,10 +546,10 @@
     data.forEach(function (e, i) {
       if (!e || typeof e !== 'object' || num(e.b) !== 2 || num(e.c) !== -25) { other++; return; }
       var P0 = num(e.P0), P1 = num(e.P1), N0 = num(e.N0), N1 = num(e.N1), where = 'Run ' + (i + 1);
+      if (P1 > L.maxP && N0 < MAX_N) { head.push(where + ' sieves p up to ' + S.depth(P1) + ', above ' + maxP() + ', which the upload server cannot check. Attach this file to a ' + issueLink() + ' instead.'); return; }
       if (![P0, P1, N0, N1].every(Number.isSafeInteger)) { head.push(where + ': P0, P1, N0 and N1 must be whole numbers'); return; }
       if (P0 < 0 || P0 >= P1 || N0 < 0 || N0 >= N1) { head.push(where + ': needs P0 < P1 and N0 < N1'); return; }
       if (N0 >= MAX_N) { beyond++; return; }
-      if (P1 > L.maxP) { head.push(where + ' sieves p up to ' + S.depth(P1) + ', above 2<sup>50</sup>, which the upload server cannot check. Attach this file to a ' + issueLink() + ' instead.'); return; }
       entries.push({ i: i, e: e, P0: P0, P1: P1, N0: N0, N1: Math.min(N1, MAX_N), end: N1, cut: N1 > MAX_N });
     });
     if (head.length) { out.innerHTML = msg('err', '<b>This file cannot be uploaded:</b>' + list(head, head.length)); return; }
@@ -635,7 +638,7 @@
       });
       close(x.N1);
     });
-    var checks = parts.reduce(function (s, p) { return s + slices(p.text, L.factorsPerCheck).length; }, 0);
+    var checks = parts.reduce(function (s, p) { return s + slices(p.text, perCheck(p.head)).length; }, 0);
     tf.plan = { ok: !bad.length, parts: parts, log: log, checks: checks };
 
     var rows = results.map(function (r) {
@@ -721,7 +724,7 @@
     var note = noteInput.value.trim().slice(0, 500), log = plan.log || {};
     var todo = [], doneChecks = 0;
     plan.parts.forEach(function (p, i) { if (!tf.sent[i]) todo.push(i); });
-    var total = todo.reduce(function (s, i) { return s + slices(plan.parts[i].text, L.factorsPerCheck).length + 2; }, 0);
+    var total = todo.reduce(function (s, i) { return s + slices(plan.parts[i].text, perCheck(plan.parts[i].head)).length + 2; }, 0);
     var ok = [], errors = [], bad = [];
     tf.busy = true; refresh();
     el('tf-result').innerHTML = '';
@@ -739,7 +742,7 @@
       call('/tf/begin', fd).then(function (j) {
         if (!j.ok) return stop(j);
         tick(label + 'checking…');
-        var ends = slices(p.text, j.factorsPerCheck || L.factorsPerCheck), s = 0, token = j.token;
+        var ends = slices(p.text, j.factorsPerCheck || perCheck(p.head)), s = 0, token = j.token;
         (function nextSlice() {
           if (s >= ends.length) {
             return call('/tf/finish', { token: token }).then(function (f) {

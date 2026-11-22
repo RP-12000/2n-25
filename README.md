@@ -174,15 +174,16 @@ saves each upload as `Submissions/<id>/submission.json` (and `<n>.proof`) in `ar
 files against the MD5 in their result line, and with `--delete` removes from the Worker only what it
 saved and checked.
 
-Sieve output (Mass Prime Siever `results.json`, p below 2⁵⁰, plus `siever.log` for the run time) has its
+Sieve output (Mass Prime Siever `results.json`, p below 2⁵³, plus `siever.log` for the run time) has its
 own form. The browser checks every factor and that every odd n appears once, and refuses the file if
 anything is wrong. It then sends one line `n p p …` per odd n that has a factor, in uploads of at most
 3 MB split by n. The Worker stores the lines once and checks every factor again in slices of 150 factors
 (`/tf/begin`, `/tf/check`, `/tf/finish`), which keeps each request well inside the free plan's 10 ms of
-CPU time; a signed token carries the position from one slice to the next. `pull_submissions.py` saves
-each sieve upload as `Submissions/<id>/TF/results.json` (Mass Prime Siever format, with every other odd
-n as `prp`) and `upload.json`, and with `--delete` also clears uploads that were started more than three
-days ago but never finished.
+CPU time; a signed token carries the position from one slice to the next. Below 2⁵⁰ the checks use exact
+arithmetic with doubles; a file whose p go above 2⁵⁰ is checked with BigInt, which is slower, in slices
+of 40 factors. `pull_submissions.py` saves each sieve upload as `Submissions/<id>/TF/results.json` (Mass
+Prime Siever format, with every other odd n as `prp`) and `upload.json`, and with `--delete` also clears
+uploads that were started more than three days ago but never finished.
 
 The pull script needs the Worker's `ADMIN_TOKEN`, read from the `UPLOAD_ADMIN_TOKEN` environment
 variable or from `upload_admin_token.txt` in your home folder. Never commit it.

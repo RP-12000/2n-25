@@ -28,6 +28,8 @@
  * factor is verified (P0 <= p < P1, p divides 2^n - 25, p is prime and not 2^n - 25
  * itself) within the free plan's CPU time per request. A signed token carries the
  * position from one slice to the next; the upload is filed only after the last one.
+ * p may go up to 2^53 - 1, the largest whole number a JSON number holds exactly;
+ * from 2^50 up the checks use BigInt, which is slower, so those slices are smaller.
  */
 
 const LIMITS = {
@@ -42,7 +44,8 @@ const LIMITS = {
   tf: {
     textBytes: 3 * 1024 * 1024,        // factor lines per upload; the Join page splits bigger files by n
     factorsPerCheck: 150,              // one /tf/check stays well inside 10 ms of CPU time
-    maxP: 1125899906842624,            // 2^50: every factor check is exact with doubles
+    factorsPerCheckBig: 40,            // the same when P1 is above 2^50, where the factors are checked with BigInt
+    maxP: Number.MAX_SAFE_INTEGER,     // 2^53 - 1: every factor below it is an exact JSON number
     uploadsPerDay: 20,
     tokenHours: 48,
   },
@@ -365,7 +368,7 @@ async function tfBegin(request, env) {
   const id = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z') + '-' + randomHex(4);
   await env.SUBMISSIONS.put('tfdata/' + id, text, { metadata: { bytes: text.length } });
   const state = { id, len: text.length, off: 0, last: head.N0 - 1, entries: 0, factors: 0, head, info, exp: Date.now() + T.tokenHours * 3600000 };
-  return reply({ ok: true, id, bytes: text.length, factorsPerCheck: T.factorsPerCheck, token: await tfSign(env, state) });
+  return reply({ ok: true, id, bytes: text.length, factorsPerCheck: factorsPerCheck(head), token: await tfSign(env, state) });
 }
 
 async function tfCheck(request, env) {
@@ -383,7 +386,7 @@ async function tfCheck(request, env) {
   if (!data || data.byteLength !== state.len) return reply({ ok: false, retry: true, errors: ['The upload is not readable here yet; try again in a few seconds.'] }, 409);
   const bytes = new Uint8Array(data, state.off, end - state.off);
   if (bytes[bytes.length - 1] !== 10) return reply({ ok: false, errors: ['A check must end at the end of a line.'] }, 400);
-  const res = checkFactorLines(new TextDecoder().decode(bytes), state.head, state.last, LIMITS.tf.factorsPerCheck);
+  const res = checkFactorLines(new TextDecoder().decode(bytes), state.head, state.last, factorsPerCheck(state.head));
   if (res.error) return reply({ ok: false, errors: [res.error] }, res.tooMany ? 413 : 400);
   if (res.bad.length) {
     return reply({ ok: false, errors: [`${res.bad.length} of the lines from offset ${state.off} do not check out.`], bad: res.bad.slice(0, 20) }, 422);
@@ -424,8 +427,13 @@ export function tfHead(h) {
   if (![P0, P1, N0, N1].every(Number.isSafeInteger)) return 'P0, P1, N0 and N1 must be whole numbers';
   if (N0 < 0 || N1 > LIMITS.maxN || N0 >= N1) return `need 0 <= N0 < N1 <= ${LIMITS.maxN}`;
   if (P0 < 0 || P0 >= P1) return 'need 0 <= P0 < P1';
-  if (P1 > LIMITS.tf.maxP) return 'P1 above 2^50 is not taken here; send the file through a GitHub issue';
+  if (P1 > LIMITS.tf.maxP) return 'P1 above 2^53 - 1 is not taken here; send the file through a GitHub issue';
   return { P0, P1, N0, N1 };
+}
+
+/** Factors per /tf/check for a slice: fewer when its p go above 2^50 (BigInt checks). */
+export function factorsPerCheck(head) {
+  return head.P1 > P50 ? LIMITS.tf.factorsPerCheckBig : LIMITS.tf.factorsPerCheck;
 }
 
 /**
@@ -462,16 +470,18 @@ export function checkFactorLines(text, head, last, maxFactors) {
   return { bad, entries: rows.length, factors, last };
 }
 
-/** Why p is not an acceptable sieve factor of 2^n - 25, or '' when it checks out (p < 2^50). */
+/** Why p is not an acceptable sieve factor of 2^n - 25, or '' when it checks out (p < 2^53). */
 export function factorProblem(n, p, P0, P1) {
   if (!(p >= P0 && p < P1)) return "outside the file's [P0, P1)";
-  if (p < 2 || powmod50(2, n, p) !== 25 % p) return 'does not divide 2^n - 25';
-  if (n < 53 && p === Math.pow(2, n) - 25) return 'is 2^n - 25 itself';
-  if (!isPrime50(p)) return 'is not prime';
+  const big = p >= P50;
+  if (p < 2 || (big ? powmodBig(2n, BigInt(n), BigInt(p)) !== 25n % BigInt(p) : powmod50(2, n, p) !== 25 % p)) return 'does not divide 2^n - 25';
+  if (n < 54 && p === Math.pow(2, n) - 25) return 'is 2^n - 25 itself';
+  if (!(big ? isPrimeBig(p) : isPrime50(p))) return 'is not prime';
   return '';
 }
 
 // Exact modular arithmetic with doubles for moduli below 2^50 (same code as assets/app.js).
+const P50 = 1125899906842624;
 const T26 = 67108864, I26 = 1 / 67108864, T52 = 4503599627370496, I52 = 1 / 4503599627370496, SMALL_MUL = 94906265;
 /** a*b mod m for 0 <= a, b < m < 2^50, with inv = 1/m. */
 function mulmodInv(a, b, m, inv) {
@@ -520,6 +530,33 @@ export function isPrime50(p) {
     if (x === 1 || x === p - 1) continue;
     let ok = false;
     for (let t = 1; t < s && !ok; t++) { x = mulmodInv(x, x, p, inv); ok = x === p - 1; }
+    if (!ok) return false;
+  }
+  return true;
+}
+
+// From 2^50 up to 2^53 the same checks run with BigInt (about 40 microseconds per factor near 2^53).
+export function powmodBig(a, e, m) {
+  let r = 1n % m, x = a % m;
+  while (e > 0n) {
+    if (e & 1n) r = (r * x) % m;
+    e >>= 1n;
+    if (e > 0n) x = (x * x) % m;
+  }
+  return r;
+}
+/** Deterministic Miller-Rabin with the bases 2..23, exact below 3.8e18 (here p < 2^53). */
+export function isPrimeBig(p) {
+  const P = BigInt(p);
+  if (P < 2n) return false;
+  for (const q of MR_BASES) if (P % BigInt(q) === 0n) return P === BigInt(q);
+  let d = P - 1n, s = 0;
+  while ((d & 1n) === 0n) { d >>= 1n; s++; }
+  for (const a of MR_BASES) {
+    let x = powmodBig(BigInt(a), d, P);
+    if (x === 1n || x === P - 1n) continue;
+    let ok = false;
+    for (let t = 1; t < s && !ok; t++) { x = (x * x) % P; ok = x === P - 1n; }
     if (!ok) return false;
   }
   return true;

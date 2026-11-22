@@ -317,12 +317,31 @@
     }
     return true;
   };
-  /* Why p is not an acceptable sieve factor of 2^n - 25 (p < 2^50), or '' when it checks out. */
+  /* From 2^50 up to 2^53 the same checks run with BigInt, as in the upload Worker. */
+  var P50 = 1125899906842624;
+  /* Deterministic Miller-Rabin with the bases 2..23, exact below 3.8e18 (here p < 2^53). */
+  Site.isPrimeBig = function (p) {
+    var P = BigInt(p), zero = BigInt(0), one = BigInt(1), i;
+    if (P < BigInt(2)) return false;
+    for (i = 0; i < MR_BASES.length; i++) if (P % BigInt(MR_BASES[i]) === zero) return P === BigInt(MR_BASES[i]);
+    var d = P - one, s = 0, top = P - one;
+    while ((d & one) === zero) { d >>= one; s++; }
+    for (i = 0; i < MR_BASES.length; i++) {
+      var x = Site.powmodBig(BigInt(MR_BASES[i]), d, P);
+      if (x === one || x === top) continue;
+      var ok = false;
+      for (var t = 1; t < s && !ok; t++) { x = (x * x) % P; ok = x === top; }
+      if (!ok) return false;
+    }
+    return true;
+  };
+  /* Why p is not an acceptable sieve factor of 2^n - 25 (p < 2^53), or '' when it checks out. */
   Site.factorProblem = function (n, p, P0, P1) {
     if (!(p >= P0 && p < P1)) return "outside the file's [P0, P1)";
-    if (p < 2 || Site.powmod50(2, n, p) !== 25 % p) return 'does not divide 2^n - 25';
-    if (n < 53 && p === Math.pow(2, n) - 25) return 'is 2^n - 25 itself';
-    if (!Site.isPrime50(p)) return 'is not prime';
+    var big = p >= P50;
+    if (p < 2 || (big ? Site.powmodBig(BigInt(2), BigInt(n), BigInt(p)) !== BigInt(25) % BigInt(p) : Site.powmod50(2, n, p) !== 25 % p)) return 'does not divide 2^n - 25';
+    if (n < 54 && p === Math.pow(2, n) - 25) return 'is 2^n - 25 itself';
+    if (!(big ? Site.isPrimeBig(p) : Site.isPrime50(p))) return 'is not prime';
     return '';
   };
   /* Steps Pollard's rho may take for one number: a fraction of a second, enough to split off any prime factor

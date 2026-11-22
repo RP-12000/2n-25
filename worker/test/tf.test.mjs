@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { Miniflare, FormData } from 'miniflare';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { checkFactorLines, factorProblem, isPrime50, mulmod50, powmod50, tfHead } from '../worker.js';
+import { checkFactorLines, factorProblem, factorsPerCheck, isPrime50, isPrimeBig, mulmod50, powmod50, powmodBig, tfHead } from '../worker.js';
 
 const ADMIN = 'test-admin-token-tf-0123456789';
 const mf = new Miniflare({
@@ -54,6 +54,10 @@ const TEXT = ROWS.map(([n, ps]) => n + ' ' + ps.join(' ') + '\n').join('');
 // Real factors with p near 10^9 (found by stepping 2^n mod p) and above 10^12 (from `factor 2^n-25`).
 const MID = [[1323709, 1000024679], [8822477, 1000025777], [4465879, 1000028639], [7115325, 1345295681]];
 const BIG = [[55, 11816594627407], [67, 23227705626217], [71, 808887840332527], [75, 105574268742353], [115, 5111176520881]];
+// Real factors from 2^50 to 2^53 (from `factor 2^n-25`), composite p that divide 2^n - 25, and 2^53 - 25 itself.
+const BIG53 = [[59, 4844208002549777], [61, 1748175139661633], [77, 5761704735465521], [135, 1686444197679751]];
+const BIG53_COMPOSITE = [[89, 2230359459326639], [173, 5461959054148607], [191, 1453602082500257]];
+const MAX = Number.MAX_SAFE_INTEGER; // 2^53 - 1
 
 test('the arithmetic is exact up to 2^50', () => {
   const M = 2 ** 50 - 27; // prime
@@ -81,6 +85,22 @@ test('factor checks: divides, prime, range, not the number itself', () => {
   assert.equal(factorProblem(two[0], two[1][0] * two[1][1], 0, 1e6), 'is not prime');
 });
 
+test('factor checks from 2^50 to 2^53 use BigInt', () => {
+  for (const [m, p] of BIG53) assert.equal(factorProblem(m, p, 2 ** 50, MAX), '');
+  for (const [m, p] of BIG53) assert.equal(factorProblem(m + 2, p, 2 ** 50, MAX), 'does not divide 2^n - 25');
+  assert.equal(factorProblem(BIG53[0][0], BIG53[0][1], 0, 2 ** 52), "outside the file's [P0, P1)");
+  for (const [m, p] of BIG53_COMPOSITE) assert.equal(factorProblem(m, p, 0, MAX), 'is not prime');
+  assert.equal(factorProblem(53, 2 ** 53 - 25, 0, MAX), 'is 2^n - 25 itself');
+  // 2^n mod p against BigInt's own power, for n up to 10^7
+  for (const p of [2 ** 50 + 1, 4844208002549777, 2 ** 53 - 111, MAX]) {
+    for (const n of [1, 52, 53, 3600001, 4999999, 9999999]) assert.equal(powmodBig(2n, BigInt(n), BigInt(p)), (2n ** BigInt(n)) % BigInt(p));
+  }
+  // Miller-Rabin: primes, Carmichael numbers (6k+1)(12k+1)(18k+1), products of two primes, near 2^53
+  for (const p of [...BIG53.map(([, q]) => q), 2 ** 53 - 111]) assert.equal(isPrimeBig(p), true);
+  for (const c of [1146654351705601, 1161408537694369, 1174103262876529, 67108859 * 67108837, 94906249 * 94906247]) assert.equal(isPrimeBig(c), false);
+  assert.equal(isPrimeBig(2 ** 50 + 1), false);
+});
+
 test('factor lines: order, parity, range and duplicates', () => {
   const good = checkFactorLines(TEXT, HEAD, HEAD.N0 - 1);
   assert.deepEqual(good.bad, []);
@@ -102,7 +122,12 @@ test('factor lines: order, parity, range and duplicates', () => {
 
 test('head checks', () => {
   assert.deepEqual(tfHead(HEAD), HEAD);
-  assert.match(tfHead({ ...HEAD, P1: 2 ** 51 }), /2\^50/);
+  assert.deepEqual(tfHead({ ...HEAD, P1: 2 ** 51 }), { ...HEAD, P1: 2 ** 51 });
+  assert.deepEqual(tfHead({ ...HEAD, P1: MAX }), { ...HEAD, P1: MAX });
+  assert.match(tfHead({ ...HEAD, P1: 2 ** 53 }), /whole numbers/);
+  assert.equal(factorsPerCheck(HEAD), 150);
+  assert.equal(factorsPerCheck({ ...HEAD, P1: 2 ** 50 }), 150);
+  assert.equal(factorsPerCheck({ ...HEAD, P1: 2 ** 50 + 1 }), 40);
   assert.match(tfHead({ ...HEAD, N1: 2e7 }), /N1/);
   assert.match(tfHead({ ...HEAD, P0: HEAD.P1 }), /P0 < P1/);
 });
@@ -191,7 +216,7 @@ test('tokens, slice ends and slice sizes are enforced', async () => {
 test('malformed uploads are refused at the start', async () => {
   assert.equal((await begin('3600001 7 x\n')).status, 400);
   assert.equal((await begin(TEXT.slice(0, -1))).status, 400);
-  assert.equal((await begin(TEXT, { head: { ...HEAD, P1: 2 ** 52 } })).status, 400);
+  assert.equal((await begin(TEXT, { head: { ...HEAD, P1: 2 ** 53 } })).status, 400);
   assert.equal((await begin(TEXT, { handle: 'bad<name>' })).status, 400);
 });
 
@@ -218,6 +243,37 @@ test('one check of 150 large factors stays far below 10 ms of CPU', () => {
   assert.ok(best < 5, `150 factor checks took ${best.toFixed(1)} ms`);
 });
 
+test('one check of 40 factors near 2^53 (BigInt) takes no longer', () => {
+  const primes = [];
+  for (let q = MAX; primes.length < 40; q -= 2) if (isPrimeBig(q)) primes.push(q);
+  let best = Infinity;
+  for (let round = 0; round < 5; round++) {
+    const t0 = performance.now();
+    for (const q of primes) { powmodBig(2n, 9999999n, BigInt(q)); isPrimeBig(q); }
+    best = Math.min(best, performance.now() - t0);
+  }
+  console.log(`  40 factor checks near 2^53: ${best.toFixed(2)} ms`);
+  assert.ok(best < 5, `40 factor checks took ${best.toFixed(1)} ms`);
+});
+
+test('an upload with p above 2^50 is checked in slices of 40', async () => {
+  const head = { P0: 2 ** 50, P1: MAX, N0: 51, N1: 201 };
+  const text = BIG53.map(([n, p]) => n + ' ' + p + '\n').join('');
+  const b = await begin(text, { head });
+  assert.equal(b.status, 200, JSON.stringify(b.body));
+  assert.equal(b.body.factorsPerCheck, 40);
+  const c = await post('tf/check', { token: b.body.token, end: text.length });
+  assert.equal(c.status, 200, JSON.stringify(c.body));
+  assert.equal((await post('tf/finish', { token: c.body.token })).status, 200);
+  const many = Array.from({ length: 41 }, (_, i) => (51 + 2 * i) + ' ' + (2 ** 50 + 1) + '\n').join('');
+  const b2 = await begin(many, { head });
+  assert.equal((await post('tf/check', { token: b2.body.token, end: many.length })).status, 413);
+  const wrong = await begin(BIG53[1][0] + ' ' + BIG53[0][1] + '\n', { head });
+  const w = await post('tf/check', { token: wrong.body.token, end: String(BIG53[1][0] + ' ' + BIG53[0][1] + '\n').length });
+  assert.equal(w.status, 422);
+  assert.equal(w.body.bad[0].reason, 'does not divide 2^n - 25');
+});
+
 test('a run that found no factor is filed straight away', async () => {
   const b = await begin('', { head: { P0: 10 ** 14, P1: 10 ** 14 + 1000, N0: 3600000, N1: 3600010 } });
   assert.equal(b.status, 200, JSON.stringify(b.body));
@@ -232,6 +288,8 @@ test('status says sieve uploads are open', async () => {
   const s = await (await mf.dispatchFetch(BASE + 'status')).json();
   assert.equal(s.sieve, true);
   assert.equal(s.limits.tf.factorsPerCheck, 150);
+  assert.equal(s.limits.tf.factorsPerCheckBig, 40);
+  assert.equal(s.limits.tf.maxP, MAX);
 });
 
 test('the Join page checks factors with the same arithmetic', () => {
@@ -251,6 +309,14 @@ test('the Join page checks factors with the same arithmetic', () => {
     if (i % 10 === 0) assert.equal(S.isPrime50(m), isPrime50(m));
   }
   for (const [n, p] of [...BIG, ...MID, [7, 103], [3600005, 7]]) assert.equal(S.factorProblem(n, p, 0, 2 ** 50), factorProblem(n, p, 0, 2 ** 50));
+  for (const [n, p] of [...BIG53, ...BIG53_COMPOSITE, [53, 2 ** 53 - 25], [61, BIG53[0][1]]]) assert.equal(S.factorProblem(n, p, 0, MAX), factorProblem(n, p, 0, MAX));
+  for (let i = 0; i < 3000; i++) {
+    const m = 2 ** 50 + Math.floor(rand() * (2 ** 53 - 2 ** 50));
+    const prime = isPrimeBig(m);
+    assert.equal(S.isPrimeBig(m), prime);
+    if (i % 3 === 0) assert.equal(S.isProbablePrime(m), prime); // the exponent page's own test, with 12 bases
+    if (i % 100 === 0) assert.equal(S.factorProblem(3600001 + 2 * i, m, 0, MAX), factorProblem(3600001 + 2 * i, m, 0, MAX));
+  }
   const [n, ps] = ROWS[3];
   assert.equal(S.factorProblem(n, ps[0], HEAD.P0, HEAD.P1), '');
 });
