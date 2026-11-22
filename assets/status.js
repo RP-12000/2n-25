@@ -61,7 +61,9 @@
   // column, where the sieve works; the rest of a column holds small factors and is cut off at the top.
   // The P-1 factor sizes of the earlier work are drawn on the History page.
   var G = { w: 1160, h: 668, L: 64, R: 1140, T: 96, B: 616 };
-  var SHOWN = 2000, LY_MAX = 14;   // ly-0 … ly-14 in site.css; larger factors take the last colour
+  var SHOWN = 2000, LY_MAX = 15;   // ly-0 … ly-15 in site.css; larger factors take the last colour
+  // how far the sieve is meant to go: the end of the sieve depth meter (content/site.json sieve_max)
+  function sieveMax(site) { return (site && site.sieve_max) || 1e15; }
 
   function bigChart(p, sum, primesDoc, site) {
     var M = S.model(site);
@@ -243,17 +245,18 @@
     return t + c.primes.length + ' known primes, the largest n = ' + fmt(c.primes[c.primes.length - 1]) + '.';
   }
 
-  /* The colour scale above the chart: one swatch per power of ten of p. */
+  /* The colour scale above the chart: one swatch per power of ten of p, from p = 7 up to 10¹⁶ (ly-0 … ly-15). */
   function renderBigScale() {
-    var h = ['<div class="scale-title">Removed by the sieve: the smallest factor p of 2<sup>n</sup> − 25</div><div class="scale-bar" aria-hidden="true">'];
-    for (var k = 0; k <= LY_MAX; k++) h.push('<i class="ly-' + k + '"></i>');
+    var n = LY_MAX + 1;
+    var h = ['<div class="scale-title">Removed by the sieve: the smallest factor p of 2<sup>n</sup> − 25</div><div class="scale-bar" aria-hidden="true" style="grid-template-columns:repeat(' + n + ', 1fr)">'];
+    for (var k = 0; k < n; k++) h.push('<i class="ly-' + k + '"></i>');
     h.push('</div><div class="scale-ticks" aria-hidden="true">');
-    [0, 3, 6, 9, 12, 15].forEach(function (e) { h.push('<span style="left:' + (e / 15 * 100).toFixed(2) + '%">' + S.tenTo(e) + '</span>'); });
+    for (var e = 0; e <= n; e += 4) h.push('<span style="left:' + (e / n * 100).toFixed(2) + '%">' + S.tenTo(e) + '</span>');
     h.push('</div>');
     var el = document.getElementById('big-scale');
     el.innerHTML = h.join('');
     el.setAttribute('role', 'img');
-    el.setAttribute('aria-label', 'Colour scale: grey for smallest factors below 10 million, from light (p = 7) to dark; teal from 10 million up to 10 to the 15, from light to dark.');
+    el.setAttribute('aria-label', 'Colour scale: grey for smallest factors below 10 million, from light (p = 7) to dark; teal from 10 million up to 10 to the ' + n + ', from light to dark.');
   }
 
   /* Beside the colour scale: how much of each column the chart shows. */
@@ -324,8 +327,8 @@
     var spans = !sieved && rows.length && rows.every(function (r) { return r.sieve_part; }) ? rows[0].sieve_part.p.filter(function (sp) {
       return rows.every(function (r) { return r.sieve_part.p.some(function (q) { return q[0] <= sp[0] && q[1] >= sp[1]; }); });
     }) : [];
-    // a plain (linear) scale from 0 to 10^15, one cell per 10^14
-    var MAX = 1e15, STEP = 1e14, cells = Math.round(MAX / STEP);
+    // a plain (linear) scale from 0 to sieveMax (2.5×10^15), in ten cells
+    var MAX = sieveMax(site), cells = 10, STEP = MAX / cells;
     var pos = function (p) { return Math.min(100, Math.max(0, p / MAX * 100)); };
     var depthPct = depth ? pos(depth) : 0;
     var partLabel = spans.length ? S.tenTo(Math.floor(Math.log10(spans[0][0]) + 1e-9)) + ' and up in part' : '';
@@ -333,7 +336,7 @@
     for (k = 1; k < cells; k++) marks.push(k);
     h.push('<div class="meters"><div><div class="meter-label"><span>Sieve depth</span><span class="mono">' +
       (depth ? 'p &lt; ' + S.depth(depth) : partLabel || 'not started') + '</span></div>' +
-      '<div class="meter meter-lg" role="img" aria-label="' + esc('Sieve depth ' + (depth ? 'p < ' + S.depth(depth) : partLabel || 'not started') + ', on a plain scale from 0 to 10¹⁵') + '">' +
+      '<div class="meter meter-lg" role="img" aria-label="' + esc('Sieve depth ' + (depth ? 'p < ' + S.depth(depth) : partLabel || 'not started') + ', on a plain scale from 0 to ' + S.depth(MAX)) + '">' +
       (depthPct ? '<i style="width:' + Math.max(0.3, depthPct).toFixed(2) + '%"></i>' : '') +
       spans.map(function (sp) { return '<i style="left:' + pos(sp[0]).toFixed(2) + '%;width:' + Math.max(0.3, pos(sp[1]) - pos(sp[0])).toFixed(2) + '%"></i>'; }).join('') +
       marks.map(function (k) { return '<b style="left:' + (k * 100 / cells).toFixed(2) + '%"></b>'; }).join('') + '</div>' +
