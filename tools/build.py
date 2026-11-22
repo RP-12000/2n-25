@@ -50,6 +50,11 @@ on the archive drive or <a>M-<b>M as in archive/):
                                      it starts below 1000), or when its id is in accepted_sieve_uploads
                                      (content/site.json). An upload that the archive also holds counts once.
 
+Each Mass Prime Siever results.json is read and its factors checked once, and each siever.log read once: what
+they give is kept in .build_cache/ in this folder (or --cache), under the file's path, size and time, and used
+again while the file and the code that reads it stay the same. Deleting the folder makes the next build read
+and check them all again.
+
 Also read: live/prp_progress.json in this folder (or --live), the PRP results of the Prime95 run on this
 PC that tools/live_prp.py reads once an hour, for a range whose PRP/results.json.txt is not in the archive
 yet. A test the archive has as well counts once. A probable prime among them is shown as "being verified"
@@ -69,6 +74,8 @@ import bisect
 import collections
 import datetime
 import glob
+import hashlib
+import inspect
 import itertools
 import json
 import math
@@ -87,6 +94,7 @@ LOG10_2 = math.log10(2)
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_ARCHIVE = os.path.join(REPO, "archive")  # filled by tools/sync_archive.py
 DEFAULT_LIVE = os.path.join(REPO, "live", "prp_progress.json")  # the Prime95 run on this PC (tools/live_prp.py)
+CACHE_DIR = os.path.join(REPO, ".build_cache")  # each checked sieve results.json (slice_digest), so it is read once
 SPLIT_CACHE = os.path.join(REPO, "archive", "pm1_splits.json")  # composite P-1 factors split into primes
 PRPTOP = os.path.join(REPO, "archive", "prptop.json")  # Top PRP ranks, read once a day by tools/prptop_ranks.py
 MONTHS = {m: i + 1 for i, m in enumerate("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split())}
@@ -604,29 +612,164 @@ def mps_entries(tf_dir, notes):
     return out
 
 
-def read_mps_file(path, notes, log):
+SLICES = {"dir": CACHE_DIR, "code": {}, "read": 0, "cached": 0, "logs_read": 0, "logs_cached": 0}   # --cache
+
+
+def code_of(*fns):
+    """What a cached result depends on besides its files: the code that makes it, and the constants it uses."""
+    names = tuple(fn.__name__ for fn in fns)
+    if names not in SLICES["code"]:
+        h = hashlib.sha256()
+        try:
+            for fn in fns:
+                h.update(inspect.getsource(fn).encode("utf-8"))
+        except (OSError, TypeError):
+            with open(os.path.abspath(__file__), "rb") as fh:     # no source to look at: the whole script
+                h.update(fh.read())
+        h.update(repr((TRIAL_LIMIT, MR_BASES, MR_BOUNDS, UPLOAD_JUDGE_FROM, ITSELF)).encode("utf-8"))
+        SLICES["code"][names] = h.hexdigest()
+    return SLICES["code"][names]
+
+
+def stamp(path):
+    """[size, modified time] of a file, or None when there is none."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return [st.st_size, st.st_mtime_ns]
+
+
+def cache_file(kind, path):
+    name = hashlib.sha256(os.path.normcase(os.path.abspath(path)).encode("utf-8", "surrogatepass")).hexdigest()[:32]
+    return os.path.join(SLICES["dir"], kind, name + ".json") if SLICES["dir"] else None
+
+
+def cache_get(kind, path, key):
+    """The value kept for path under key (see cache_put), or None."""
+    cache = cache_file(kind, path)
+    if not cache:
+        return None
+    try:
+        with open(cache, encoding="utf-8") as fh:
+            got = json.load(fh)
+        if got.get("path") == path and got.get("key") == key:
+            return got["value"]
+    except (OSError, ValueError, AttributeError, KeyError):
+        pass
+    return None
+
+
+def cache_put(kind, path, key, value):
+    cache = cache_file(kind, path)
+    if not cache:
+        return
+    try:
+        os.makedirs(os.path.dirname(cache), exist_ok=True)
+        with open(cache + ".tmp", "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"path": path, "key": key, "value": value}, separators=(",", ":")))
+        os.replace(cache + ".tmp", cache)
+    except OSError:
+        pass
+
+
+def read_mps_file(path, notes, log, upload=False):
+    """The entries of one results.json, every factor already checked (slice_digest). The checked form is kept in
+    the cache folder under the file's path, size and time, so an unchanged file is read and checked only once."""
+    key = [code_of(is_prime, factor_problem, slice_digest), stamp(path), bool(upload)]
+    digest = cache_get("slices", path, key)
+    if digest is None:
+        digest = slice_digest(path, upload)
+        SLICES["read"] += 1
+        cache_put("slices", path, key, digest)
+    else:
+        SLICES["cached"] += 1
+    for kind, where in digest["notes"]:
+        notes.add(kind, where)
+    return [{**d, "path": path, "log": log} for d in digest["entries"]]
+
+
+def slice_digest(path, upload):
+    """One results.json read and checked: {notes: [[kind, where]], entries: [...]}. Each entry keeps p0, p1, n0,
+    n1 and time, and in place of the lists:
+      items: every factored item in order, [n, factors], or [n, factors, why] when a factor does not check out
+             (why[i]: factor_problem() of factors[i], None when it does), or None when the item cannot be read;
+             factors are checked for the odd n in [max(n0, 5), n1), the only n any range folder takes from it
+      runs: the odd n in [max(n0, 5), n1) that it lists (factored or prp), as [first, last + 2) runs
+      twice: the smallest n it lists more than once, or None; bad_prp: how many prp entries cannot be read
+      found (uploads only): how many factors it lists from p0 (from UPLOAD_JUDGE_FROM when p0 < 1000) up"""
+    notes = []
     try:
         data = json.loads(read_text(path))
     except ValueError:
-        notes.add("unreadable Mass Prime Siever results.json", path)
-        return []
+        return {"notes": [["unreadable Mass Prime Siever results.json", path]], "entries": []}
     if not isinstance(data, list):
-        notes.add("Mass Prime Siever results.json is not a list", path)
-        return []
+        return {"notes": [["Mass Prime Siever results.json is not a list", path]], "entries": []}
     out = []
     for e in data:
         try:
             b, c = int(e["b"]), int(e["c"])
             p0, p1, n0, n1 = int(e["P0"]), int(e["P1"]), int(e["N0"]), int(e["N1"])
         except (KeyError, TypeError, ValueError):
-            notes.add("Mass Prime Siever entry without b, c, P0, P1, N0, N1", path)
+            notes.append(["Mass Prime Siever entry without b, c, P0, P1, N0, N1", path])
             continue
         if (b, c) != (2, -25):
-            notes.add("sieve output for another sequence", path)
+            notes.append(["sieve output for another sequence", path])
             continue
-        out.append({"path": path, "p0": p0, "p1": p1, "n0": n0, "n1": n1, "prp": e.get("prp") or [],
-                    "factored": e.get("factored") or [], "time": str(e.get("Timestamp") or ""), "log": log})
-    return out
+        factored, prp = e.get("factored") or [], e.get("prp") or []
+        d = {"p0": p0, "p1": p1, "n0": n0, "n1": n1, "time": str(e.get("Timestamp") or "")}
+        if upload:
+            # small primes do not follow ln(ln p1 / ln p0) for this sequence (3 and 5 never divide 2^n - 25),
+            # so a slice that starts below 1000 is judged by its factors from UPLOAD_JUDGE_FROM up
+            low = p0 if p0 >= 1000 else UPLOAD_JUDGE_FROM
+            d["found"] = sum(1 for x in factored if isinstance(x, dict) for f in (x.get("factors") or []) if int(f) >= low)
+        first = max(n0, 5)
+        items, listed, bad_prp = [], collections.Counter(), 0
+        for item in factored:
+            try:
+                n = int(item["n"])
+                fs = [int(f) for f in item.get("factors") or []]
+            except (KeyError, TypeError, ValueError):
+                items.append(None)
+                continue
+            listed[n] += 1
+            if fs and first <= n < n1 and n % 2 == 1:
+                why = [factor_problem(n, p, p0, p1) for p in fs]
+                if any(w is not None for w in why):
+                    items.append([n, fs, why])
+                    continue
+            items.append([n, fs])
+        for x in prp:
+            try:
+                listed[int(x)] += 1
+            except (TypeError, ValueError):
+                bad_prp += 1
+        twice = [n for n, k in listed.items() if k > 1]
+        runs = []
+        for n in sorted(n for n in listed if first <= n < n1 and n % 2 == 1):
+            if runs and runs[-1][1] == n:
+                runs[-1][1] = n + 2
+            else:
+                runs.append([n, n + 2])
+        d.update({"items": items, "runs": runs, "twice": min(twice) if twice else None, "bad_prp": bad_prp})
+        out.append(d)
+    return {"notes": notes, "entries": out}
+
+
+def unlisted(runs, a, b):
+    """How many odd n in [a, b) the runs of listed odd n leave out, and the first of them (None when none)."""
+    x = start = a | 1
+    have, first = 0, None
+    for s, t in runs:
+        if t <= start or s >= b:
+            continue
+        if first is None and s > x:
+            first = x
+        have += len(range(max(s, start), min(t, b), 2))
+        x = max(x, t)
+    if first is None and x < b:
+        first = x
+    return len(range(start, b, 2)) - have, first
 
 
 def expected_factors(odd, p0, p1):
@@ -653,12 +796,10 @@ def uploaded_sieve(root, notes, accepted):
         log = {"start": run.get("start") or None, "end": run.get("end") or None, "wall_s": float(run.get("wall_s") or 0),
                "program": run.get("program") or "Mass Prime Siever 12.0", "named": bool(run.get("program"))}
         who = shown_name(up.get("handle") or "anonymous")[:40]
-        for e in read_mps_file(path, notes, log):
+        for e in read_mps_file(path, notes, log, upload=True):
             odd = len(range(max(e["n0"], 5) | 1, min(e["n1"], N_MAX), 2))
-            # small primes do not follow ln(ln p1 / ln p0) for this sequence (3 and 5 never divide 2^n - 25),
-            # so a slice that starts below 1000 is judged by its factors from UPLOAD_JUDGE_FROM up
-            low = e["p0"] if e["p0"] >= 1000 else UPLOAD_JUDGE_FROM
-            found = sum(1 for x in e["factored"] if isinstance(x, dict) for f in (x.get("factors") or []) if int(f) >= low)
+            low = e["p0"] if e["p0"] >= 1000 else UPLOAD_JUDGE_FROM   # as slice_digest() counted e["found"]
+            found = e["found"]
             want = expected_factors(odd, low, e["p1"])
             plausible = want is not None and want >= UPLOAD_MIN_EXPECTED and found >= UPLOAD_MIN_RATIO * want
             e.update({"who": who, "upload": sid, "depth_ok": sid in accepted or plausible})
@@ -671,12 +812,27 @@ def uploaded_sieve(root, notes, accepted):
 
 
 def mps_log(folder):
+    """mps_log_read(folder), kept in the cache folder under the size and time of siever.log and source.txt: the
+    logs of the long runs are tens of MB each, so each is read only once."""
+    path = os.path.join(folder, "siever.log")
+    if not os.path.exists(path):
+        return None
+    key = [code_of(mps_log_read), stamp(path), stamp(os.path.join(folder, "source.txt"))]
+    got = cache_get("logs", path, key)
+    if got is None:
+        got = mps_log_read(folder)
+        SLICES["logs_read"] += 1
+        cache_put("logs", path, key, got)
+    else:
+        SLICES["logs_cached"] += 1
+    return got
+
+
+def mps_log_read(folder):
     """Start, end, wall-clock seconds and version from a Mass Prime Siever siever.log. The version comes from
     the log's "Mass Prime Siever <v> starting" line; a log without one takes it from the
     "Program: Mass Prime Siever <v>" line of the slice's source.txt, and 12.0 is assumed only without both."""
     path = os.path.join(folder, "siever.log")
-    if not os.path.exists(path):
-        return None
     text = read_text(path)
     stamps = re.findall(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", text, re.M)
     totals = re.findall(r"Total elapsed time:\s+([\d.]+)", text)
@@ -715,30 +871,27 @@ def check_mps(entries, lo, hi, notes):
         if a >= b:
             notes.add("sieve output for n outside its range folder", e["path"])
             continue
-        listed = collections.Counter()
         mine = found.setdefault(id(e), {})   # n -> this slice's checked factors above TRIAL_LIMIT
-        for item in e["factored"]:
-            try:
-                n = int(item["n"])
-                fs = [int(f) for f in item.get("factors") or []]
-            except (KeyError, TypeError, ValueError):
+        for item in e["items"]:              # checked by slice_digest()
+            if item is None:
                 notes.add("unreadable entry in Mass Prime Siever factored list", e["path"])
                 continue
-            listed[n] += 1
+            n, fs = item[0], item[1]
             if not (a <= n < b) or n % 2 == 0:
                 continue
             if not fs:
                 notes.add("sieve output lists n as factored but gives no factor (n kept as a candidate)", f"{e['path']}: n = {n}")
                 continue
-            good, itself = [], False
-            for p in fs:
-                why = factor_problem(n, p, e["p0"], e["p1"])
-                if why is None:
-                    good.append(p)
-                elif why == ITSELF:
-                    itself = True            # 2^n - 25 is prime: not a factor, and no problem either
-                else:
-                    notes.add(f"sieve factor that {why}", f"{e['path']}: n = {n}, p = {p}")
+            good, itself = fs, False         # [n, factors]: every factor checked out
+            if len(item) > 2:
+                good = []
+                for p, why in zip(fs, item[2]):
+                    if why is None:
+                        good.append(p)
+                    elif why == ITSELF:
+                        itself = True        # 2^n - 25 is prime: not a factor, and no problem either
+                    else:
+                        notes.add(f"sieve factor that {why}", f"{e['path']}: n = {n}, p = {p}")
             if not good:
                 if not itself:
                     notes.add("n kept as a candidate because none of its sieve factors checked out", f"{e['path']}: n = {n}")
@@ -748,19 +901,13 @@ def check_mps(entries, lo, hi, notes):
                 mine.setdefault(n, set()).update(big)
             if n not in removed or min(good) < removed[n]:
                 removed[n] = min(good)
-        for x in e["prp"]:
-            try:
-                listed[int(x)] += 1
-            except (TypeError, ValueError):
-                notes.add("unreadable entry in Mass Prime Siever prp list", e["path"])
-        twice = [n for n, k in listed.items() if k > 1]
-        if twice:
-            notes.add("n listed twice in one sieve output", f"{e['path']}: n = {min(twice)}")
-        odd_listed = sum(1 for n in listed if a <= n < b and n % 2 == 1)
-        odd_expected = len(range(a | 1, b, 2))
-        if odd_listed != odd_expected:
-            missing = [n for n in range(a | 1, b, 2) if n not in listed]
-            notes.add("odd n missing from a sieve output (kept as candidates)", f"{e['path']}: {len(missing)} n, first {missing[0] if missing else '?'}")
+        for _ in range(e["bad_prp"]):
+            notes.add("unreadable entry in Mass Prime Siever prp list", e["path"])
+        if e["twice"] is not None:
+            notes.add("n listed twice in one sieve output", f"{e['path']}: n = {e['twice']}")
+        missing, first = unlisted(e["runs"], a, b)
+        if missing:
+            notes.add("odd n missing from a sieve output (kept as candidates)", f"{e['path']}: {missing} n, first {first}")
 
     # base slices sieve from the smallest primes; only their n range counts as sieved
     base = [e for e in entries if e["p0"] <= MPS_BASE_P and e.get("depth_ok", True)]
@@ -1158,12 +1305,10 @@ class Archive:
                 # an upload the archive keeps too was not checked again: take the factors it lists that the
                 # archive's copy of the run checked
                 listed = collections.defaultdict(set)
-                for item in e["factored"]:
-                    try:
-                        n = int(item["n"])
-                        fs = [int(f) for f in item.get("factors") or []]
-                    except (KeyError, TypeError, ValueError):
+                for item in e["items"]:
+                    if item is None:
                         continue
+                    n, fs = item[0], item[1]
                     if lo <= n < hi and n in checked:
                         listed[n].update(p for p in fs if e["p0"] <= p < e["p1"] and p in checked[n])
             key = (e["p0"], e["p1"], max(e["n0"], lo), min(e["n1"], hi))
@@ -1798,7 +1943,8 @@ def build(archive_root, out_dir, content_path, live_path=None):
             # a file of its own: it changes only when a sieve slice comes in, the shard with every PRP result
             path = os.path.join(out_dir, "f", shard_name(lo) + ".json")
             with open(path, "w", encoding="utf-8") as f:
-                json.dump({"lo": lo, "hi": hi, "users": arc.users, "slices": slices}, f, ensure_ascii=False, separators=(",", ":"))
+                # json.dumps, not json.dump: dumps uses the fast C encoder, dump the slow one (the same bytes)
+                f.write(json.dumps({"lo": lo, "hi": hi, "users": arc.users, "slices": slices}, ensure_ascii=False, separators=(",", ":")))
             summary["factor_files"].append(shard_name(lo))
             factor_bytes += os.path.getsize(path)
         if not surv and not pm1 and not prp:
@@ -1812,7 +1958,7 @@ def build(archive_root, out_dir, content_path, live_path=None):
             doc["pm1f"] = pm1f
         path = os.path.join(out_dir, "n", shard_name(lo) + ".json")
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(doc, f, separators=(",", ":"))
+            f.write(json.dumps(doc, separators=(",", ":")))
         shard_count += 1
         summary["shards"].append(shard_name(lo))
         shard_bytes += os.path.getsize(path)
@@ -1821,9 +1967,9 @@ def build(archive_root, out_dir, content_path, live_path=None):
         path = os.path.join(out_dir, name)
         with open(path, "w", encoding="utf-8", newline="\n") as f:          # LF on Windows too
             if pretty:
-                json.dump(obj, f, ensure_ascii=False, indent=1)
+                f.write(json.dumps(obj, ensure_ascii=False, indent=1))
             else:
-                json.dump(obj, f, ensure_ascii=False, separators=(",", ":"))
+                f.write(json.dumps(obj, ensure_ascii=False, separators=(",", ":")))
         return os.path.getsize(path)
 
     sizes = {
@@ -1836,6 +1982,8 @@ def build(archive_root, out_dir, content_path, live_path=None):
     }
 
     print(f"Read {len(arc.dirs)} range folders in {time.time() - t0:.1f} s.")
+    print(f"  sieve output files: {SLICES['read']:,} read and checked, {SLICES['cached']:,} unchanged; siever.log files: "
+          f"{SLICES['logs_read']:,} read, {SLICES['logs_cached']:,} unchanged (cache: {SLICES['dir'] or 'none'})")
     print(f"  survivors {len(arc.survivors):,} · P-1 runs {counts['pm1_runs']:,} ({counts['pm1_factors']:,} factors)"
           f" · PRP-tested n {counts['prp_tests']:,} · primes {counts['primes']} · proofs {arc.proofs:,}")
     if sieve["pm1_composite"]:
@@ -1867,8 +2015,11 @@ def main():
     ap.add_argument("--archive", default=DEFAULT_ARCHIVE, help="copy of the 2^n-25 project folder (contains Ranges); default archive/")
     ap.add_argument("--out", default=os.path.join(REPO, "data"), help="where to write the JSON files")
     ap.add_argument("--content", default=os.path.join(REPO, "content", "site.json"), help="hand-written facts and plans")
+    ap.add_argument("--cache", default=CACHE_DIR, help="where the checked sieve output files are kept (slice_digest); "
+                    "'none' reads and checks every file each time; default .build_cache/")
     ap.add_argument("--live", default=DEFAULT_LIVE, help="PRP results of the Prime95 run on this PC (tools/live_prp.py); default live/prp_progress.json")
     args = ap.parse_args()
+    SLICES["dir"] = None if args.cache.lower() == "none" else args.cache
     os.makedirs(args.out, exist_ok=True)
     build(args.archive, args.out, args.content, args.live)
 
