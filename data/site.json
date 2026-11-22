@@ -3,9 +3,10 @@
  "credit_computer": "home",
  "run_by": "Boyan H",
  "next_sieve": {
-  "p_from": 200000000000000,
-  "p_to": 1000000000000000
+  "p_from": 1112000000000000,
+  "p_to": 2500000000000000
  },
+ "sieve_max": 2500000000000000,
  "oeis": "A379020",
  "links": {
   "repo": "https://github.com/RP-12000/2n-25",
