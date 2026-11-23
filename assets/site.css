@@ -1,6 +1,9 @@
 /* 2^n-25 Prime Search
    Layout: one 1200px column of white panels on a cool grey ground; every figure in a monospace face.
    Colour roles: blue = work in progress / links, orange = primes, green = resolved, near-black = tested. */
+/* Superscript digits (10¹⁴, 2⁵³, 2ⁿ): the fonts in the page head leave out ⁰ ⁴–⁹ ⁿ, which then came from
+   another font and sat higher or lower than ¹ ² ³. This loads just those characters from the same faces. */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap&text=%E2%81%B0%C2%B9%C2%B2%C2%B3%E2%81%B4%E2%81%B5%E2%81%B6%E2%81%B7%E2%81%B8%E2%81%B9%E2%81%BA%E2%81%BB%E2%81%BF");
 :root {
   --bg: #F3F5F8;
   --surface: #FFFFFF;
