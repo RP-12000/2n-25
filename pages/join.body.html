@@ -19,9 +19,9 @@
       <a class="foot" id="link-siever" href="https://github.com/RP-12000/Mass-Prime-Siever">Get Mass Prime Siever on GitHub →</a>
     </article>
     <article class="card way">
-      <div class="card-head"><h2>PRP tests on a CPU</h2><span class="pill muted" id="prp-pill">After the 10<sup>12</sup> sieve</span></div>
+      <div class="card-head"><h2>PRP tests on a CPU or GPU</h2><span class="pill muted" id="prp-pill">After the 10<sup>12</sup> sieve</span></div>
       <div class="grow">
-        <p>Prime95 runs a base-3 Fermat test with Gerbicz error checking. This is where primes are found. It needs an x86 CPU; GPUs like the T4 are a poor fit for numbers this size.</p>
+        <p>Prime95 on an x86 CPU, or <a href="https://github.com/RP-12000/dfprp">hyprp</a> on a GPU (CUDA on NVIDIA, OpenCL on others), runs a base-3 Fermat test with Gerbicz error checking. This is where primes are found. One T4 tests an n near 3.6M in about 7 minutes.</p>
         <div class="facts-list" id="way-prp">
           <div><span>One test</span><span>0<small>.112</small> T4-Hours at n = 3.6M</span></div>
           <div><span>Laptop</span><span>8 workers · ≈ 230 tests a day</span></div>
