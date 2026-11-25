@@ -4,8 +4,8 @@
   "credit_computer": "home",
   "aliases": {"Kelvinizer": "Boyan H"},
   "run_by": "Boyan H",
-  "next_sieve": {"p_from": 1112000000000000, "p_to": 2500000000000000},
-  "sieve_max": 2500000000000000,
+  "next_sieve": {"p_from": 1448000000000000, "p_to": 1500000000000000},
+  "sieve_max": 1500000000000000,
   "oeis": "A379020",
   "links": {
     "repo": "https://github.com/RP-12000/2n-25",
@@ -29,6 +29,13 @@
       "definition": "1 T4-Hour = what one Tesla T4 card, running alone, computes in one hour. A PRP test of n costs n x (T4 ms per iteration at the FFT length and digit mode hyprp uses for n) / 3,600,000 T4-Hours; below 16K the 16K time is used.",
       "measured": "2026-11-25, Kaggle Tesla T4, hyprp -bench (CUDA), mean of the two cards of one session, each running alone",
       "modes": ["16-bit digits (n <= 16 L)", "32-bit digits"],
+      "tf": {
+        "definition": "Sieving (trial factoring) the active range over p in [p1, p2) costs (number of primes in [p1, p2)) / primes_per_hour T4-Hours: the time Mass Prime Siever 14.0 on one T4 needs for it. Older sievers and other hardware are counted by the same rate.",
+        "program": "Mass Prime Siever 14.0",
+        "n_window": [3600000, 5000000],
+        "primes_per_hour": 87900000000,
+        "measured": "66 Kaggle T4 slices of 3.6M <= n < 5M, p from 1e14 to 1.448e15: median 2.44e7 primes per second per T4 (each within 6%)"
+      },
       "points": [
         {"fft": 16384, "mode": 0, "ms": 0.0226},
         {"fft": 16384, "mode": 1, "ms": 0.02275},
@@ -127,10 +134,26 @@
     {
       "p_from": 40000000000000,
       "p_to": 100000000000000,
+      "machine": "Kaggle · T4",
+      "backend": "CUDA",
+      "status": "Done",
+      "survivors": "45,950"
+    },
+    {
+      "p_from": 100000000000000,
+      "p_to": 1448000000000000,
+      "machine": "Kaggle · T4",
+      "backend": "CUDA",
+      "status": "Done",
+      "survivors": "42,391"
+    },
+    {
+      "p_from": 1448000000000000,
+      "p_to": 1500000000000000,
       "machine": "Not assigned yet",
       "backend": "—",
       "status": "Planned",
-      "survivors": "≈ 45,900"
+      "survivors": "≈ 42,350"
     }
   ],
   "benchmarks": {

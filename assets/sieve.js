@@ -188,7 +188,7 @@
     // the depth the old sievers reached below this range (the first sieve, where a range was sieved again since)
     var old = Math.max.apply(null, [0].concat(rows.filter(function (r) { return r.hi <= act.lo && r.sieve && r.sieve.depth; })
       .map(function (r) { return (r.sieve_before || r.sieve).depth; })));
-    var target = S.sieveTarget(site, act.lo).target;
+    var target = S.rangeSieveTarget(site, rows).target;
     var e0 = Math.min(9, Math.floor(Math.log10(old || 1e9))), e1 = Math.ceil(Math.log10(target)) + 1;
     var L = 60, R = 560, B = 210, T = 30;
     var X = function (p) { return L + (Math.log10(p) - e0) / (e1 - e0) * (R - L); };
@@ -428,13 +428,23 @@
     var depth = actRows.length && actRows.every(function (r) { return r.sieved && r.sieve && r.sieve.depth; }) ?
       Math.min.apply(null, actRows.map(function (r) { return r.sieve.depth; })) : 0;
     var left = actRows.reduce(function (t, r) { return t + (r.survivors || 0); }, 0);
-    el.innerHTML = '<table class="data"><thead><tr><th>p range</th><th class="text">Machine</th><th>Backend</th><th class="text">Status</th><th class="r">Survivors</th></tr></thead><tbody>' +
+    // sieve work in T4-Hours (content/site.json model.t4.tf): what Mass Prime Siever 14.0 on one T4 needs for the p range
+    var t4 = site.model && site.model.t4, hasT4 = S.tfT4Hours(t4, 0, 1e9) !== null, doneH = 0, leftH = 0;
+    el.innerHTML = '<table class="data"><thead><tr><th>p range</th><th class="text">Machine</th><th>Backend</th><th class="text">Status</th>' +
+      '<th class="r">Survivors</th>' + (hasT4 ? '<th class="r">T4-Hours</th>' : '') + '</tr></thead><tbody>' +
       plan.map(function (s) {
         var reached = depth && depth >= s.p_to && !/^done$/i.test(s.status || '');
         var surv = reached && depth === s.p_to ? fmt(left) : s.survivors;
+        var h = hasT4 ? S.tfT4Hours(t4, s.p_from, s.p_to) : null;
+        if (h !== null) { if (reached || /^done$/i.test(s.status || '')) doneH += h; else leftH += h; }
         return '<tr><td>' + pLabel(s.p_from) + ' – ' + pLabel(s.p_to) + '</td><td class="text">' + esc(s.machine) + '</td><td>' + esc(s.backend) +
-          '</td><td class="text">' + statusPill(reached ? 'Done' : s.status) + '</td><td class="r">' + esc(surv) + '</td></tr>';
+          '</td><td class="text">' + statusPill(reached ? 'Done' : s.status) + '</td><td class="r">' + esc(surv) + '</td>' +
+          (hasT4 ? '<td class="r">' + (h === null ? '—' : S.t4num(h)) + '</td>' : '') + '</tr>';
       }).join('') + '</tbody></table>';
+    var note = document.getElementById('plan-t4');
+    if (note) note.innerHTML = hasT4 ? 'Sieve work in T4-Hours: the time Mass Prime Siever 14.0 on one Tesla T4 needs for that p range ' +
+      '(about ' + S.depth(t4.tf.primes_per_hour) + ' primes an hour, measured on Kaggle). Done so far ' + S.t4cost(doneH) +
+      (leftH ? ', still planned ' + S.t4cost(leftH) : '') + '.' : '';
   }
   function renderBench(site) {
     var b = site.benchmarks;

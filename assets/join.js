@@ -62,7 +62,7 @@
     var act = site.active || { lo: sum.frontier, hi: 5000000 };
     var actRows = rows.filter(function (r) { return r.lo >= act.lo && r.hi <= act.hi; });
     var odd = actRows.reduce(function (s, r) { return s + r.odd; }, 0);
-    var target = site.sieve_target || 1e14, startAt = site.prp_from_depth || 1e12;
+    var target = S.rangeSieveTarget(site, rows).target, startAt = site.prp_from_depth || 1e12;
     var perDay = (site.model && site.model.laptop_prp_per_day) || 230;
     if (links.siever) el('link-siever').href = links.siever;
     if (links.prime95) el('link-prime95').href = links.prime95;
@@ -86,7 +86,9 @@
     }
     var planned = (site.sieve_plan || []).filter(function (s) { return /^planned$/i.test(s.status || ''); });
     if (site.next_sieve && site.next_sieve.p_to) {
-      el('way-sieve').firstElementChild.lastElementChild.textContent = 'p ' + S.depth(site.next_sieve.p_from) + ' – ' + S.depth(site.next_sieve.p_to);
+      var nh = S.tfT4Hours(site.model && site.model.t4, site.next_sieve.p_from, site.next_sieve.p_to);
+      el('way-sieve').firstElementChild.lastElementChild.innerHTML = 'p ' + esc(S.depth(site.next_sieve.p_from)) + ' – ' + esc(S.depth(site.next_sieve.p_to)) +
+        (nh === null ? '' : ' · ' + S.t4cost(nh));
     } else if (planned.length) {
       el('way-sieve').firstElementChild.lastElementChild.textContent = 'p ' + S.depth(planned[0].p_from) + ' – ' + S.depth(planned[0].p_to) +
         (planned.length > 1 ? ', then to ' + S.depth(planned[planned.length - 1].p_to) : '');

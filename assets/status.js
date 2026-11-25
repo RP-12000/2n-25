@@ -317,7 +317,7 @@
     // then count under the sieve and are no candidates any more
     var tested = sieved ? Math.max(0, cands - rows.reduce(function (s, r) { return s + (r.untested || 0); }, 0)) : tests;
     var refound = Math.max(0, tests - tested);
-    var target = S.sieveTarget(site, act.lo).target;
+    var target = S.rangeSieveTarget(site, rows).target;
     var lowEst = Math.round(M.survivors(odd, target) / 100) * 100, highEst = Math.round(M.survivors(odd, 1e12) / 100) * 100;
     var badge = site.active && site.active.badge ? '<span class="pill accent">' + esc(site.active.badge) + '</span>' : '';
     var h = [];

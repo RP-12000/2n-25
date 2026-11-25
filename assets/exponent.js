@@ -498,8 +498,13 @@
     var show = row && ['comp', 'p1', 'sieve', 'sieve-big', 'sieve-part', 'untested', 'future', 'queued', 'todo'].indexOf(kind) >= 0 && n > 13;
     card.hidden = !show;
     if (!show) return;
-    var tg = S.sieveTarget(ctx.site, n), target = tg.target;
-    var plan = tg.note ? tg.note : 'Target is today’s plan for new ranges: sieve to ' + S.depth(target) + ' and skip P-1, which stopped paying off once the sieve went deep.';
+    var tg = S.sieveTarget(ctx.site, n, ctx.rows), target = tg.target, cut = tg.cutoff;
+    var plan = tg.note ? tg.note : cut ? 'Target is the TF cutoff of this n in T4-Hours: the sieve pays for it while its work, shared out over ' +
+      (cut.future ? 'about ' + fmt(cut.N) + ' untested n of a range sieved like the active one' : 'the ' + fmt(cut.N) + ' untested n of ' +
+      S.rangeLabel(ctx.site.active.lo, ctx.site.active.hi)) + ', costs less than the PRP test of n it may save (' + cut.c.toFixed(3) +
+      ' T4-Hours): up to p = ' + S.depth(cut.R) + ' primes a T4-Hour × ' + fmt(cut.N) + ' × ' + cut.c.toFixed(3) + ' ≈ ' + S.depth(target) +
+      '. P-1 is skipped: it stopped paying off once the sieve went deep.'
+      : 'Target is today’s plan for new ranges: sieve to ' + S.depth(target) + ' and skip P-1, which stopped paying off once the sieve went deep.';
     var K = row.survivor_K || ctx.M.K;
     var sTgt = 1 - K / Math.log(target);
     var pct = function (x) { return (x * 100).toFixed(2) + ' %'; };
@@ -564,7 +569,7 @@
         rows.push('<tr><th class="text" scope="row">Difference</th>' + decCell(-Math.log10(target)) + sign(-1, pct(sTgt)) + cell('—') + cell('—') + cell('—') + sign(-1, pct(sTgt)) + '</tr>');
         var odd7 = 700000;
         note = '* Expected share of odd n removed, from the survivor model (survivors fall like ' + ctx.M.K + ' / ln p). For 700,000 odd n that leaves about ' +
-          fmt(Math.round(ctx.M.survivors(odd7, 1e12) / 100) * 100) + ' at 10¹² and ' + fmt(Math.round(ctx.M.survivors(odd7, target) / 100) * 100) + ' at ' + S.depth(target) + '.';
+          fmt(Math.round(ctx.M.survivors(odd7, 1e12) / 100) * 100) + ' at 10¹² and ' + fmt(Math.round(ctx.M.survivors(odd7, target) / 100) * 100) + ' at ' + S.depth(target) + '.' + (cut ? ' ' + plan : '');
       }
     }
     document.getElementById('fx-scope').textContent = scope;
@@ -661,7 +666,7 @@
         prime: 'It is ' + (ctx.primeInfo[n] && !ctx.primeInfo[n].found ? 'prime' : 'a probable prime') + ', so there are no factors to list.',
         'sieve-big': 'The sieve removed it, so some prime between 10⁷ and ' + depth + ' divides it. The sieve output keeps only the survivors, so that factor is not on record yet.',
         untested: 'None. No prime below ' + depth + ' divides it' + (info.pm1 && info.pm1[0] ? ', and P-1 found nothing' : '') + '.',
-        queued: 'None yet: no prime below 10⁷ divides it. The sieve will try every p up to ' + S.depth(S.sieveTarget(ctx.site, n).target) + '.',
+        queued: 'None yet: no prime below 10⁷ divides it. The sieve will try every p up to ' + S.depth(S.sieveTarget(ctx.site, n, ctx.rows).target) + '.',
         todo: 'None yet: no prime below 10⁷ divides it.'
       }[kind] || '—';
     }

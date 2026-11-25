@@ -14,10 +14,22 @@
     return String(k).split('').map(function (c) { return c === '-' ? '⁻' : (SUP[Number(c)] || c); }).join('');
   };
   Site.tenTo = function (e) { return '10' + Site.sup(e); };
-  /* The sieve target for exponent n: content/site.json sieve_targets [{lo, hi, target, note}], else sieve_target */
-  Site.sieveTarget = function (site, n) {
+  /* The sieve target for exponent n: content/site.json sieve_targets [{lo, hi, target, note}]; else, given the range
+     rows, its TF cutoff in T4-Hours (Site.tfCutoff; the returned object then carries it as `cutoff`); else
+     sieve_target */
+  Site.sieveTarget = function (site, n, rows) {
     var t = ((site && site.sieve_targets) || []).filter(function (x) { return n >= x.lo && n < x.hi; })[0];
-    return t || { target: (site && site.sieve_target) || 1e14 };
+    if (t) return t;
+    var cut = rows ? Site.tfCutoff(site, rows, n) : null;
+    return cut ? { target: cut.target, cutoff: cut } : { target: (site && site.sieve_target) || 1e14 };
+  };
+  /* The sieve target of the active range as a whole: its TF cutoff (Site.rangeCutoff), else as for one n */
+  Site.rangeSieveTarget = function (site, rows) {
+    var act = site && site.active;
+    var t = act && ((site.sieve_targets) || []).filter(function (x) { return act.lo >= x.lo && act.lo < x.hi; })[0];
+    if (t) return t;
+    var p = rows ? Site.rangeCutoff(site, rows) : null;
+    return p ? { target: p, cutoff: { range: true } } : { target: (site && site.sieve_target) || 1e14 };
   };
   /* Sieve depths: 10⁷, 1.61×10⁹, 2³² (for 2^32 - 1) */
   Site.depth = function (d) {
@@ -193,10 +205,64 @@
   };
   // a T4-Hour amount the way mersenne.ca writes GHz-days: '0.115 T4-Hours', '1,234.567 T4-Hours', decimals in small
   // type (HTML); amounts under 0.001 keep three significant digits ('0.000312 T4-Hours')
+  Site.t4num = function (h) {
+    var s = h >= 0.001 || h === 0 ? h.toFixed(3) : h.toPrecision(3);
+    var parts = s.split('.');
+    return Number(parts[0]).toLocaleString('en-US') + (parts[1] ? '<small>.' + parts[1] + '</small>' : '');
+  };
   Site.t4cost = function (h) {
     var s = h >= 0.001 || h === 0 ? h.toFixed(3) : h.toPrecision(3);
     var parts = s.split('.');
     return Number(parts[0]).toLocaleString('en-US') + (parts[1] ? '<small>.' + parts[1] + '</small>' : '') + ' T4-Hours';
+  };
+  // logarithmic integral Li(x) (asymptotic series; good to about 1e-7 relative for x >= 1e6): the number of primes
+  // below x is close to Li(x)
+  Site.li = function (x) {
+    if (x < 3) return 0;
+    var L = Math.log(x), s = 0, term = 1;
+    for (var k = 0; k < 10; k++) { s += term; term *= (k + 1) / L; }
+    return x / L * s;
+  };
+  // sieve (trial factoring) work over p in [p1, p2) in T4-Hours: primes in the range / primes one T4 sieves an hour
+  // (model.t4.tf, Mass Prime Siever 14.0); null without that rate
+  Site.tfT4Hours = function (t4, p1, p2) {
+    var tf = t4 && t4.tf;
+    if (!tf || !tf.primes_per_hour || !(p2 > p1)) return null;
+    return (Site.li(p2) - Site.li(Math.max(p1, 2))) / tf.primes_per_hour;
+  };
+  /* TF cutoff of exponent n in T4-Hours. The sieve of a range costs dp / (R ln p) T4-Hours for the primes in
+     [p, p + dp) (R: primes one T4 sieves an hour, model.t4.tf) and finds a factor for a share dp / (p ln p) of the n
+     still left. Shared out over the N untested n of the range, the sieve pays for n while that share of its work
+     costs less than the PRP test it may save, c(n) T4-Hours: up to p = R x N x c(n). In the active range N is its
+     untested n now; a range after it is taken as sieved the same way (as wide, N = K x odd n / ln p).
+     Returns {target, N, c, R, future} or null (no T4 data, or n below the active range). */
+  Site.tfCutoff = function (site, rows, n) {
+    var m = (site && site.model) || {}, t4 = m.t4, act = site && site.active;
+    var R = t4 && t4.tf && t4.tf.primes_per_hour, c = Site.t4Hours(t4, n);
+    if (!R || c === null || !act || !rows || n < act.lo) return null;
+    if (n < act.hi) {
+      var N = rows.filter(function (r) { return r.lo >= act.lo && r.hi <= act.hi; })
+        .reduce(function (s, r) { return s + (r.untested || 0); }, 0);
+      return N ? { target: R * N * c, N: N, c: c, R: R, future: false } : null;
+    }
+    var odd = (act.hi - act.lo) / 2, K = m.survivor_K || 2.12, p = 1e15;
+    for (var i = 0; i < 30; i++) p = R * c * K * odd / Math.log(p);
+    return { target: p, N: Math.round(K * odd / Math.log(p)), c: c, R: R, future: true };
+  };
+  /* TF cutoff of the active range as a whole: p = R x (the sum of c(n) over its untested n), taken row by row with c
+     at the middle of the row; null without T4 data */
+  Site.rangeCutoff = function (site, rows) {
+    var m = (site && site.model) || {}, t4 = m.t4, act = site && site.active;
+    var R = t4 && t4.tf && t4.tf.primes_per_hour;
+    if (!R || !act || !rows) return null;
+    var s = 0;
+    rows.forEach(function (r) {
+      if (r.lo >= act.lo && r.hi <= act.hi && r.untested) {
+        var c = Site.t4Hours(t4, Math.round((r.lo + r.hi) / 2));
+        if (c !== null) s += r.untested * c;
+      }
+    });
+    return s ? R * s : null;
   };
   // cost of one PRP test of n: T4-Hours when the T4 benchmark is in the content, else the old core-time estimate
   Site.prpCost = function (M, n) {
