@@ -92,7 +92,7 @@
         (planned.length > 1 ? ', then to ' + S.depth(planned[planned.length - 1].p_to) : '');
     }
     var prpRows = el('way-prp');
-    prpRows.innerHTML = '<div><span>One test</span><span>' + S.cost(M.prpMinutes(act.lo)) + ' at n = ' + S.M(act.lo) + '</span></div>' +
+    prpRows.innerHTML = '<div><span>One test</span><span>' + S.prpCost(M, act.lo) + ' at n = ' + S.M(act.lo) + '</span></div>' +
       '<div><span>Laptop</span><span>8 workers · ≈ ' + fmt(perDay) + ' tests a day</span></div>';
     var started = actRows.some(function (r) { return r.prp && r.prp.tests > 0; });
     var pill = el('prp-pill');

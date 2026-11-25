@@ -47,7 +47,7 @@
     document.getElementById('sieve-lede').innerHTML =
       'Before any PRP test, every prime p up to the sieve depth is tried against all n at once: the siever solves 2<sup>n</sup> ≡ 25 (mod p) ' +
       'and strikes out each n that p divides. Removing a candidate this way costs a fraction of a second; a PRP test near n = ' + S.M(n0) +
-      ' costs ' + S.cost(M.prpMinutes(n0)).replace('≈', 'about') + '.';
+      ' costs ' + S.prpCost(M, n0) + '.';
   }
 
   /* ---------- depth by range ---------- */

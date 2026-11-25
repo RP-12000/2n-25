@@ -209,7 +209,7 @@
       if (n < 64) facts.push('<div>= <span class="mono">' + S.fmtBig(dec) + '</span></div>');
       else facts.push('<div>≈ <span class="mono">' + dec[0] + '.' + dec.slice(1, 8) + ' × 10<sup>' + fmt(S.digits(n) - 1) + '</sup></span></div>');
       facts.push('<div>has <strong>' + fmt(S.digits(n)) + '</strong> decimal digits</div>');
-      facts.push('<div>takes ' + S.cost(M.prpMinutes(n)) + ' to do one PRP test</div>');
+      facts.push('<div>takes ' + S.prpCost(M, n) + ' to do one PRP test</div>');
     }
     document.getElementById('facts').innerHTML = facts.join('');
     var pIdx = ctx.primes.indexOf(n), pInfo = ctx.primeInfo[n] || {};

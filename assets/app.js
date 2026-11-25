@@ -151,8 +151,57 @@
       survivors: function (oddCount, p) { return oddCount * (m.survivor_K || 2.12) / Math.log(p); },
       prpMinutes: function (n) {
         return (m.prp_core_minutes_at_3600000 || 50) * Math.pow(n / 3600000, m.prp_cost_exponent || 2.1);
-      }
+      },
+      // work of one PRP test of n in T4-Hours (null without a T4 benchmark in content/site.json model.t4)
+      prpT4Hours: function (n) { return Site.t4Hours(m.t4, n); }
     };
+  };
+
+  /* ---------- T4-Hours ----------
+     1 T4-Hour = what one Tesla T4 card, running alone, computes in one hour. model.t4 holds the result of
+     `hyprp -bench` on a T4: points [{fft, mode, ms}] (ms per iteration for each FFT length 16K .. 2048K and digit
+     storage mode). A PRP test of n is n iterations at the FFT length and mode hyprp uses for n, so it costs
+     n * ms / 3,600,000 T4-Hours. Below 16K a T4 iteration costs about the same as at 16K (kernel launches dominate),
+     so the shortest measured length is used there.
+     hyprp's rules: L is the smallest power of two with n / L under 17.7 bits up to 128K, then 17.45, 17.2, 16.95,
+     16.5 for 256K .. 2048K (n within 32 of a multiple of L/4 takes the next length); mode 0 = 16-bit digits
+     (n <= 16 L), mode 1 = 32-bit digits. */
+  var T4_LIMIT = {18: 17.45, 19: 17.2, 20: 16.95, 21: 16.5};
+  Site.hyprpFFT = function (n) {
+    for (var k = 6; k <= 21; k++) {
+      var L = Math.pow(2, k), lim = k <= 17 ? 17.7 : T4_LIMIT[k];
+      if (n / L <= lim) {
+        var q = L / 4, r = n % q, near = L >= 4096 && (r < 32 || q - r < 32);
+        return near && k < 21 ? k + 1 : k;
+      }
+    }
+    return null;  // beyond 2048K: hyprp does not take it
+  };
+  Site.hyprpMode = function (n, L) { return n <= 16 * L ? 0 : 1; };
+  Site.t4Hours = function (t4, n) {
+    if (!t4 || !t4.points || !t4.points.length || !(n > 0)) return null;
+    var k = Site.hyprpFFT(n);
+    if (k === null) return null;
+    var L = Math.pow(2, k), mode = Site.hyprpMode(n, L), ms = null, minL = Infinity, i, pt;
+    for (i = 0; i < t4.points.length; i++) if (t4.points[i].fft < minL) minL = t4.points[i].fft;
+    if (L < minL) L = minL;  // shorter lengths: about the same time per iteration as the shortest measured one
+    for (i = 0; i < t4.points.length; i++) {
+      pt = t4.points[i];
+      if (pt.fft === L && pt.mode === mode) ms = pt.ms;
+    }
+    return ms === null ? null : n * ms / 3.6e6;
+  };
+  // a T4-Hour amount the way mersenne.ca writes GHz-days: '0.115 T4-Hours', '1,234.567 T4-Hours', decimals in small
+  // type (HTML); amounts under 0.001 keep three significant digits ('0.000312 T4-Hours')
+  Site.t4cost = function (h) {
+    var s = h >= 0.001 || h === 0 ? h.toFixed(3) : h.toPrecision(3);
+    var parts = s.split('.');
+    return Number(parts[0]).toLocaleString('en-US') + (parts[1] ? '<small>.' + parts[1] + '</small>' : '') + ' T4-Hours';
+  };
+  // cost of one PRP test of n: T4-Hours when the T4 benchmark is in the content, else the old core-time estimate
+  Site.prpCost = function (M, n) {
+    var h = M.prpT4Hours(n);
+    return h === null ? Site.cost(M.prpMinutes(n)) : Site.t4cost(h);
   };
   Site.cost = function (minutes) {
     if (minutes < 1 / 60) return 'under a core-second';
