@@ -25,6 +25,97 @@
   "prp_core_minutes_at_3600000": 50,
   "prp_cost_exponent": 2.1,
   "laptop_prp_per_day": 230,
+  "t4": {
+   "unit": "T4-Hour",
+   "definition": "1 T4-Hour = what one Tesla T4 card, running alone, computes in one hour. A PRP test of n costs n x (T4 ms per iteration at the FFT length and digit mode hyprp uses for n) / 3,600,000 T4-Hours; below 16K the 16K time is used.",
+   "measured": "2026-11-25, Kaggle Tesla T4, hyprp -bench (CUDA), mean of the two cards of one session, each running alone",
+   "modes": [
+    "16-bit digits (n <= 16 L)",
+    "32-bit digits"
+   ],
+   "points": [
+    {
+     "fft": 16384,
+     "mode": 0,
+     "ms": 0.0226
+    },
+    {
+     "fft": 16384,
+     "mode": 1,
+     "ms": 0.02275
+    },
+    {
+     "fft": 32768,
+     "mode": 0,
+     "ms": 0.0254
+    },
+    {
+     "fft": 32768,
+     "mode": 1,
+     "ms": 0.0253
+    },
+    {
+     "fft": 65536,
+     "mode": 0,
+     "ms": 0.0345
+    },
+    {
+     "fft": 65536,
+     "mode": 1,
+     "ms": 0.03495
+    },
+    {
+     "fft": 131072,
+     "mode": 0,
+     "ms": 0.0591
+    },
+    {
+     "fft": 131072,
+     "mode": 1,
+     "ms": 0.0592
+    },
+    {
+     "fft": 262144,
+     "mode": 0,
+     "ms": 0.1115
+    },
+    {
+     "fft": 262144,
+     "mode": 1,
+     "ms": 0.1129
+    },
+    {
+     "fft": 524288,
+     "mode": 0,
+     "ms": 0.26245
+    },
+    {
+     "fft": 524288,
+     "mode": 1,
+     "ms": 0.2671
+    },
+    {
+     "fft": 1048576,
+     "mode": 0,
+     "ms": 0.6413
+    },
+    {
+     "fft": 1048576,
+     "mode": 1,
+     "ms": 0.64455
+    },
+    {
+     "fft": 2097152,
+     "mode": 0,
+     "ms": 1.32285
+    },
+    {
+     "fft": 2097152,
+     "mode": 1,
+     "ms": 1.3281
+    }
+   ]
+  },
   "note": "Expected primes in [a, b) is about C * ln(b / a). Sieve survivors fall like K / ln p."
  },
  "record": {
@@ -72,7 +163,7 @@
    "state": "next",
    "tag": "2 · running",
    "title": "PRP, smallest n first",
-   "where": "Prime95 PRP-3 · ≈ 50 core-minutes each",
+   "where": "Prime95 PRP-3 · 0.112 T4-Hours each at n = 3.6M",
    "figure": "≈ 230 tests / day"
   }
  ],
