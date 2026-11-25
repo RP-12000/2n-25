@@ -3,10 +3,10 @@
  "credit_computer": "home",
  "run_by": "Boyan H",
  "next_sieve": {
-  "p_from": 1112000000000000,
-  "p_to": 2500000000000000
+  "p_from": 1448000000000000,
+  "p_to": 1500000000000000
  },
- "sieve_max": 2500000000000000,
+ "sieve_max": 1500000000000000,
  "oeis": "A379020",
  "links": {
   "repo": "https://github.com/RP-12000/2n-25",
@@ -33,6 +33,16 @@
     "16-bit digits (n <= 16 L)",
     "32-bit digits"
    ],
+   "tf": {
+    "definition": "Sieving (trial factoring) the active range over p in [p1, p2) costs (number of primes in [p1, p2)) / primes_per_hour T4-Hours: the time Mass Prime Siever 14.0 on one T4 needs for it. Older sievers and other hardware are counted by the same rate.",
+    "program": "Mass Prime Siever 14.0",
+    "n_window": [
+     3600000,
+     5000000
+    ],
+    "primes_per_hour": 87900000000,
+    "measured": "66 Kaggle T4 slices of 3.6M <= n < 5M, p from 1e14 to 1.448e15: median 2.44e7 primes per second per T4 (each within 6%)"
+   },
    "points": [
     {
      "fft": 16384,
@@ -195,10 +205,26 @@
   {
    "p_from": 40000000000000,
    "p_to": 100000000000000,
+   "machine": "Kaggle · T4",
+   "backend": "CUDA",
+   "status": "Done",
+   "survivors": "45,950"
+  },
+  {
+   "p_from": 100000000000000,
+   "p_to": 1448000000000000,
+   "machine": "Kaggle · T4",
+   "backend": "CUDA",
+   "status": "Done",
+   "survivors": "42,391"
+  },
+  {
+   "p_from": 1448000000000000,
+   "p_to": 1500000000000000,
    "machine": "Not assigned yet",
    "backend": "—",
    "status": "Planned",
-   "survivors": "≈ 45,900"
+   "survivors": "≈ 42,350"
   }
  ],
  "benchmarks": {
