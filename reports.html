@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reports · 2ⁿ−25 Prime Search</title>
+<meta name="description" content="How far the search below n = 10 million has come, and what everyone has computed for it, in T4-Hours.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="bar">
+    <div class="brand-nav">
+      <a class="brand" href="index.html"><span class="brand-mark">2<sup>n</sup>−25</span><span class="brand-sub">Prime Search</span></a>
+      <nav class="nav" aria-label="Main">
+        <a href="index.html">Status</a>
+        <a href="ranges.html">Ranges</a>
+        <a href="exponent.html">Exponents</a>
+        <a href="sieve.html">Sieve</a>
+        <a href="primes.html">Primes</a>
+        <a href="history.html">History</a>
+        <a href="reports.html" aria-current="page">Reports</a>
+        <a href="join.html">Join</a>
+      </nav>
+    </div>
+    <form class="lookup" role="search" action="exponent.html">
+      <label for="hdr-n">n =</label>
+      <input id="hdr-n" class="input" name="n" type="text" inputmode="numeric" autocomplete="off">
+      <button class="btn" type="submit">Look up</button>
+      <button class="btn ghost q" type="button" data-surprise title="Surprise me: open a random n" aria-label="Surprise me: open the page of a random n">?</button>
+    </form>
+  </div>
+</header>
+<main class="page" id="main">
+  <div class="page-head">
+    <div>
+      <h1 class="title">Reports</h1>
+      <p class="lede">How far the search below n = 10<sup>7</sup> has come, and what everyone has computed for it, sieving and PRP tests, in T4-Hours: one T4-Hour is what one Tesla T4 card, running alone, computes in one hour. Work done on any other hardware counts by the same yardstick.</p>
+    </div>
+  </div>
+
+  <section class="card" aria-labelledby="rep-prog-title">
+    <div class="card-head"><h2 id="rep-prog-title">Progress</h2><span class="meta" id="rep-prog-meta"></span></div>
+    <div id="rep-prog"><p class="loading">Loading…</p></div>
+  </section>
+
+  <section class="card" aria-labelledby="rep-blocks-title">
+    <div class="card-head">
+      <h2 id="rep-blocks-title">PRP work by range</h2>
+      <div class="seg" role="group" aria-label="Group rows by">
+        <button type="button" id="rb-1m" aria-pressed="true">1M rows</button>
+        <button type="button" id="rb-02m" aria-pressed="false">0.2M rows</button>
+      </div>
+    </div>
+    <div class="table-wrap" id="rep-blocks"></div>
+    <p class="small mt12" id="rep-blocks-note"></p>
+  </section>
+
+  <section class="tiles" id="rep-tiles" aria-label="Totals"></section>
+
+  <section class="card" aria-labelledby="rep-people-title">
+    <div class="card-head"><h2 id="rep-people-title">Contributors</h2><span class="meta" id="rep-people-meta"></span></div>
+    <div class="table-wrap" id="rep-people"></div>
+  </section>
+
+  <section class="card" aria-labelledby="rep-comp-title">
+    <div class="card-head"><h2 id="rep-comp-title">Computers</h2><span class="meta">each contributor’s machines and Kaggle sessions</span></div>
+    <div class="table-wrap" id="rep-comp"></div>
+  </section>
+
+  <section class="card" aria-labelledby="rep-how-title">
+    <h2 id="rep-how-title">How the work is counted</h2>
+    <div id="rep-how"></div>
+  </section>
+</main>
+<footer class="site-footer">
+  <div class="bar">
+    <span>Built from Prime95 results.json, P-1 logs and sieve output · data <span data-generated>…</span></span>
+    <span class="links"><a href="https://github.com/RP-12000/2n-25">Source and data</a><a href="https://oeis.org/A379020">OEIS A379020</a><a href="http://www.primenumbers.net/prptop/prptop.php">PRP Records</a></span>
+  </div>
+</footer>
+<script src="assets/app.js"></script>
+<script src="assets/reports.js"></script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+  <div class="page-head">
+    <div>
+      <h1 class="title">Reports</h1>
+      <p class="lede">How far the search below n = 10<sup>7</sup> has come, and what everyone has computed for it, sieving and PRP tests, in T4-Hours: one T4-Hour is what one Tesla T4 card, running alone, computes in one hour. Work done on any other hardware counts by the same yardstick.</p>
+    </div>
+  </div>
+
+  <section class="card" aria-labelledby="rep-prog-title">
+    <div class="card-head"><h2 id="rep-prog-title">Progress</h2><span class="meta" id="rep-prog-meta"></span></div>
+    <div id="rep-prog"><p class="loading">Loading…</p></div>
+  </section>
+
+  <section class="card" aria-labelledby="rep-blocks-title">
+    <div class="card-head">
+      <h2 id="rep-blocks-title">PRP work by range</h2>
+      <div class="seg" role="group" aria-label="Group rows by">
+        <button type="button" id="rb-1m" aria-pressed="true">1M rows</button>
+        <button type="button" id="rb-02m" aria-pressed="false">0.2M rows</button>
+      </div>
+    </div>
+    <div class="table-wrap" id="rep-blocks"></div>
+    <p class="small mt12" id="rep-blocks-note"></p>
+  </section>
+
+  <section class="tiles" id="rep-tiles" aria-label="Totals"></section>
+
+  <section class="card" aria-labelledby="rep-people-title">
+    <div class="card-head"><h2 id="rep-people-title">Contributors</h2><span class="meta" id="rep-people-meta"></span></div>
+    <div class="table-wrap" id="rep-people"></div>
+  </section>
+
+  <section class="card" aria-labelledby="rep-comp-title">
+    <div class="card-head"><h2 id="rep-comp-title">Computers</h2><span class="meta">each contributor’s machines and Kaggle sessions</span></div>
+    <div class="table-wrap" id="rep-comp"></div>
+  </section>
+
+  <section class="card" aria-labelledby="rep-how-title">
+    <h2 id="rep-how-title">How the work is counted</h2>
+    <div id="rep-how"></div>
+  </section>

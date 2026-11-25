@@ -10,6 +10,9 @@ another copy given with --archive), and writes the JSON files that the pages loa
                       once a day by tools/prptop_ranks.py; while that file is missing, the ranks in content/site.json)
   data/sieve.json     P-1 factor sizes and survivor constants
   data/site.json      content/site.json (plans, notes), copied as is
+  data/reports.json   in T4-Hours (content/site.json model.t4): what each contributor and computer has computed (PRP
+                      tests, sieve slices) and the primes they found first; the progress of the whole search, done
+                      and left, and the PRP work of each range row (written last, from the files above)
   data/n/<x.xx>.json  one file per 0.01M of n: sieve survivors and every P-1 / PRP record; in a range sieved
                       twice, also the survivors of the first sieve (s0)
   data/f/<x.xx>.json  one file per 0.01M of n sieved by Mass Prime Siever: each sieve slice over those n (p and n
@@ -2007,6 +2010,235 @@ def build(archive_root, out_dir, content_path, live_path=None):
     return summary
 
 
+# ---------------------------------------------------------------- data/reports.json
+REPORT_FFT_LIMIT = {18: 17.45, 19: 17.2, 20: 16.95, 21: 16.5}   # hyprp's bits/word limits above 128K (17.7 up to 128K)
+
+
+def _li(x):
+    """Logarithmic integral (asymptotic series): about the number of primes below x."""
+    if x < 3:
+        return 0.0
+    L = math.log(x)
+    s, term = 0.0, 1.0
+    for k in range(10):
+        s += term
+        term *= (k + 1) / L
+    return x / L * s
+
+
+def _who_and_computer(h):
+    """'Boyan H - w2g0' -> ('Boyan H', 'w2g0'), as Site.whoAndComputer does on the pages."""
+    m = re.match(r"^(.*?\S)(?:\s+-\s*|\s*-\s+)(\S.*)$", str(h or ""))
+    return (m.group(1), m.group(2)) if m else (str(h or ""), "")
+
+
+def write_reports(out_dir, content_path):
+    """data/reports.json: what each contributor (and each of their computers) has computed, in T4-Hours
+    (content/site.json model.t4; 1 T4-Hour = what one Tesla T4, running alone, computes in one hour):
+      PRP: every result counts n x (T4 ms per iteration at the FFT length and digit mode hyprp uses for n) / 3.6e6;
+      sieve: every slice counts (primes in its p range) / (primes Mass Prime Siever 14.0 sieves an hour on a T4);
+    plus the primes each one found. P-1 is not counted: the search now uses only sieving and PRP.
+    Also the progress of the whole search, over every row of data/ranges.json (n < 10M), and the PRP work of each
+    row (blocks). Done is all the work above. Left is the PRP tests the candidates of the sieved rows still need (the
+    sieve survivors no test, P-1 factor or direct check has settled), the sieve of the active range from its depth to
+    sieve_max, and for the rows not sieved yet an estimate: the sieve to their TF cutoff, as the pages work it out
+    (Site.tfCutoff: in windows as wide as the active range, each row taking its share), and a PRP test of each of the
+    survivor_K x (odd n) / ln p candidates that would leave.
+    Read from the files this build has just written (data/n, data/f, data/ranges.json, data/primes.json)."""
+    site = json.load(open(content_path, encoding="utf-8"))
+    model = site.get("model") or {}
+    t4 = model.get("t4") or {}
+    ms = {(p["fft"], p["mode"]): p["ms"] for p in t4.get("points", [])}
+    R = (t4.get("tf") or {}).get("primes_per_hour")
+    path = os.path.join(out_dir, "reports.json")
+    if not ms or not R:
+        if os.path.exists(path):
+            os.remove(path)
+        return None
+    min_fft = min(f for f, _ in ms)
+
+    def prp_hours(n):
+        for k in range(6, 22):
+            L = 1 << k
+            lim = 17.7 if k <= 17 else REPORT_FFT_LIMIT[k]
+            if n / L <= lim:
+                q = L // 4
+                r = n % q
+                if L >= 4096 and (r < 32 or q - r < 32) and k < 21:
+                    k += 1
+                    L = 1 << k
+                mode = 0 if n <= 16 * L else 1
+                v = ms.get((max(L, min_fft), mode))
+                return n * v / 3.6e6 if v else None
+        return None
+
+    try:
+        rows = sorted(json.load(open(os.path.join(out_dir, "ranges.json"), encoding="utf-8"))["rows"], key=lambda r: r["lo"])
+    except (OSError, ValueError, KeyError):
+        rows = []
+    blocks = [{"lo": r["lo"], "hi": r["hi"], "status": r.get("status") or "", "tests": 0, "tested": 0, "left": 0,
+               "prp_done": 0.0, "prp_left": 0.0} for r in rows]
+    los = [b["lo"] for b in blocks]
+
+    def block_of(n):
+        i = bisect.bisect_right(los, n) - 1
+        return blocks[i] if i >= 0 and n < blocks[i]["hi"] else None
+
+    small = {p["n"] for p in site.get("small_primes") or [] if isinstance(p, dict) and "n" in p}
+    people = {}
+
+    entries = {}
+
+    def entry(who):
+        if who not in entries:
+            name, comp = _who_and_computer(who)
+            p = people.setdefault(name, {"name": name, "computers": {}})
+            entries[who] = (p, p["computers"].setdefault(comp, {"name": comp}))
+        return entries[who]
+
+    def add(objs, key, v):
+        for o in objs:
+            o[key] = o.get(key, 0) + v
+
+    for fn in sorted(glob.glob(os.path.join(out_dir, "n", "*.json"))):
+        d = json.load(open(fn, encoding="utf-8"))
+        users = d.get("users") or []
+        prp = d.get("prp") or {}
+        pm1 = d.get("pm1") or {}
+        for n, results in prp.items():
+            h = prp_hours(int(n)) or 0.0
+            b = block_of(int(n))
+            if b is not None:
+                b["tests"] += len(results)
+                b["tested"] += 1
+                b["prp_done"] += h * len(results)
+            for r in results:
+                u = r[6] if len(r) > 6 else None
+                who = users[u] if isinstance(u, int) and 0 <= u < len(users) else (u or "")
+                objs = entry(who)
+                add(objs, "prp_tests", 1)
+                add(objs, "prp_t4h", h)
+        for n in d.get("s") or []:
+            if str(n) in prp or n in small or any(r[3] for r in pm1.get(str(n), []) if len(r) > 3):
+                continue
+            b = block_of(int(n))
+            if b is not None and b["status"] != "done":
+                b["left"] += 1
+                b["prp_left"] += prp_hours(int(n)) or 0.0
+    seen = set()
+    for fn in sorted(glob.glob(os.path.join(out_dir, "f", "*.json"))):
+        d = json.load(open(fn, encoding="utf-8"))
+        users = d.get("users") or []
+        for s in d.get("slices") or []:
+            u = s.get("by")
+            who = users[u] if isinstance(u, int) and 0 <= u < len(users) else (u or "")
+            p0, p1 = s["p"]
+            key = (p0, p1, tuple(s.get("rn") or s.get("n") or ()), s.get("st"), who)
+            if key in seen:                       # a slice is listed in every factor file its n range touches
+                continue
+            seen.add(key)
+            objs = entry(who)
+            add(objs, "tf_slices", 1)
+            add(objs, "tf_t4h", (_li(p1) - _li(max(p0, 2))) / R)
+    try:
+        for pr in json.load(open(os.path.join(out_dir, "primes.json"), encoding="utf-8")).get("primes", []):
+            # only the primes this project found first: their discoverer is whoever found them here (primes below
+            # content/site.json discoverers.below were known before, and the search only found them again)
+            if pr.get("who") and pr.get("discoverer") == _who_and_computer(pr["who"])[0]:
+                add(entry(pr["who"]), "primes", 1)
+    except (OSError, ValueError):
+        pass
+
+    keys = ("prp_tests", "prp_t4h", "tf_slices", "tf_t4h", "primes")
+    raw = {k: sum(p.get(k, 0) for p in people.values()) for k in keys}   # before rounding: the progress adds up to it
+    raw["t4h"] = raw["prp_t4h"] + raw["tf_t4h"]
+
+    def tidy(o):
+        for k in ("prp_t4h", "tf_t4h"):
+            o[k] = round(o.get(k, 0.0), 4)
+        for k in ("prp_tests", "tf_slices", "primes"):
+            o[k] = o.get(k, 0)
+        o["t4h"] = round(o["prp_t4h"] + o["tf_t4h"], 4)
+        return o
+
+    out = []
+    for p in people.values():
+        comps = sorted((tidy(c) for c in p.pop("computers").values()), key=lambda c: -c["t4h"])
+        tidy(p)
+        p["computers"] = comps
+        out.append(p)
+    out.sort(key=lambda p: (-p["t4h"], -p["prp_tests"], p["name"]))
+    totals = {k: round(v, 4) for k, v in raw.items()}
+
+    # ---- what is left: the active range's sieve to sieve_max, and the rows not sieved yet (an estimate)
+    act = site.get("active") or {}
+    alo, ahi = act.get("lo"), act.get("hi")
+    K = model.get("survivor_K") or 2.12
+    odd_w = (ahi - alo) / 2 if alo is not None and ahi else 700000
+    active = None
+    if alo is not None and ahi:
+        arows = [r for r in rows if r["lo"] >= alo and r["hi"] <= ahi]
+        depths = [r["sieve"]["depth"] for r in arows if r.get("sieve") and r["sieve"].get("depth")]
+        depth = min(depths) if arows and len(depths) == len(arows) else 0
+        smax = max(site.get("sieve_max") or depth, depth)
+        ab = [b for b in blocks if b["lo"] >= alo and b["hi"] <= ahi]
+        active = {"lo": alo, "hi": ahi, "sieve_depth": depth, "sieve_max": smax,
+                  "tf_left": round((_li(smax) - _li(depth)) / R, 4),
+                  "prp_left": round(sum(b["prp_left"] for b in ab), 4), "left": sum(b["left"] for b in ab)}
+    future = None
+    for r, b in zip(rows, blocks):
+        if r.get("sieved"):
+            continue
+        c = prp_hours((r["lo"] + r["hi"]) // 2)
+        if not c:
+            continue
+        p = 1e15
+        for _ in range(30):                          # the TF cutoff p = R c K odd / ln p, as Site.tfCutoff
+            p = R * c * K * odd_w / math.log(p)
+        odd = r.get("odd") or (r["hi"] - r["lo"]) // 2
+        cs = [prp_hours(n) or 0.0 for n in range(r["lo"] + 1, r["hi"], 200)]   # the mean cost of a test over the row
+        cand = K * odd / math.log(p)
+        b.update(est=True, p=round(p), left=round(cand), prp_left=cand * sum(cs) / len(cs), tf_left=_li(p) / R * odd / odd_w)
+        if future is None:
+            future = {"lo": r["lo"], "hi": r["hi"], "tf_left": 0.0, "prp_left": 0.0, "left": 0.0, "p_lo": p, "p_hi": p}
+        future["hi"] = max(future["hi"], r["hi"])
+        future["tf_left"] += b["tf_left"]
+        future["prp_left"] += b["prp_left"]
+        future["left"] += cand
+        future["p_lo"], future["p_hi"] = min(future["p_lo"], p), max(future["p_hi"], p)
+    if future:
+        future.update(tf_left=round(future["tf_left"], 4), prp_left=round(future["prp_left"], 4), left=round(future["left"]),
+                      p_lo=round(future["p_lo"]), p_hi=round(future["p_hi"]), K=K, window=odd_w * 2)
+    progress = None
+    if blocks:
+        progress = {
+            "lo": blocks[0]["lo"], "hi": blocks[-1]["hi"],
+            "tf_done": round(raw["tf_t4h"], 4),
+            "tf_left": round((active["tf_left"] if active else 0) + (future["tf_left"] if future else 0), 4),
+            "prp_done": round(raw["prp_t4h"], 4),
+            "prp_left": round(sum(b["prp_left"] for b in blocks), 4),
+            "tests": raw["prp_tests"], "tested": sum(b["tested"] for b in blocks),
+            "left": sum(b["left"] for b in blocks if not b.get("est")),
+            "active": active, "future": future,
+        }
+    for b in blocks:
+        b["prp_done"], b["prp_left"] = round(b["prp_done"], 4), round(b["prp_left"], 4)
+        if "tf_left" in b:
+            b["tf_left"] = round(b["tf_left"], 4)
+    report = {
+        "unit": "T4-Hour",
+        "definition": t4.get("definition", ""),
+        "tf_definition": (t4.get("tf") or {}).get("definition", ""),
+        "totals": totals,
+        "progress": progress,
+        "blocks": blocks,
+        "people": out,
+    }
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(report, f, ensure_ascii=False, separators=(",", ":"))
+    return report
+
+
 def main():
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
@@ -2022,6 +2254,12 @@ def main():
     SLICES["dir"] = None if args.cache.lower() == "none" else args.cache
     os.makedirs(args.out, exist_ok=True)
     build(args.archive, args.out, args.content, args.live)
+    rep = write_reports(args.out, args.content)
+    if rep:
+        tt, pg = rep["totals"], rep["progress"]
+        print(f"  reports: {len(rep['people'])} contributors, {tt['t4h']:,.1f} T4-Hours "
+              f"(PRP {tt['prp_t4h']:,.1f}, sieve {tt['tf_t4h']:,.1f})" +
+              (f"; left below n = {pg['hi']:,}: about {pg['tf_left'] + pg['prp_left']:,.0f} T4-Hours" if pg else ""))
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write the seven HTML pages from pages/<name>.body.html plus the shared header and footer below.
+"""Write the eight HTML pages from pages/<name>.body.html plus the shared header and footer below.
 
 Run it after changing a body file or the header/footer:  python tools/make_pages.py
 """
@@ -15,10 +15,12 @@ PAGES = [
     ('sieve.html', 'sieve', 'Sieve · 2ⁿ−25 Prime Search', 'Sieve depth by range, candidates left, P-1 factor sizes and the siever versions used.', 'sieve'),
     ('primes.html', 'primes', 'Known primes · 2ⁿ−25 Prime Search', 'Every n for which 2^n − 25 is prime or probable prime, with discovery dates and expected counts.', 'primes'),
     ('history.html', 'history', 'History · 2ⁿ−25 Prime Search', 'How the search got here: the frontier day by day, work per day and month, the sieve depth and P-1 factor sizes, milestones and the primes found along the way.', 'history'),
+    ('reports.html', 'reports', 'Reports · 2ⁿ−25 Prime Search', 'How far the search below n = 10 million has come, and what everyone has computed for it, in T4-Hours.', 'reports'),
     ('join.html', 'join', 'Join · 2ⁿ−25 Prime Search', 'How to help: sieve on a GPU, run PRP tests with Prime95, upload results.', 'join'),
 ]
 NAV = [('status', 'index.html', 'Status'), ('ranges', 'ranges.html', 'Ranges'), ('exponents', 'exponent.html', 'Exponents'),
-       ('sieve', 'sieve.html', 'Sieve'), ('primes', 'primes.html', 'Primes'), ('history', 'history.html', 'History'), ('join', 'join.html', 'Join')]
+       ('sieve', 'sieve.html', 'Sieve'), ('primes', 'primes.html', 'Primes'), ('history', 'history.html', 'History'),
+       ('reports', 'reports.html', 'Reports'), ('join', 'join.html', 'Join')]
 
 def page(fname, key, title, desc, script):
     body = open(os.path.join(HERE, fname.replace('.html', '.body.html')), encoding='utf-8').read().strip('\n')
