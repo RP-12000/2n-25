@@ -115,7 +115,7 @@
 
   <section class="card" id="upload" aria-labelledby="upload-title">
     <div class="card-head"><h2 id="upload-title">Upload PRP results</h2><span class="meta" id="up-status">checking the upload server…</span></div>
-    <p class="body">Send the <code>results.json.txt</code> that Prime95 or mprime writes, or the <code>results.jsonl</code> from <a href="https://github.com/RP-12000/dfprp">dfprp</a> (hyprp), one JSON object per line. Only PRP and P-1 lines for 2<sup>n</sup> − 25 with n &lt; 10<sup>7</sup> are kept; anything else in the file is ignored. dfprp lines must carry their checksum, and each is credited to the name and GPU written in it. No proof file is needed. Large files are sent in parts of up to 1,000 lines.</p>
+    <p class="body">Send the <code>results.json.txt</code> that Prime95 or mprime writes, or the one <a href="https://github.com/RP-12000/dfprp">dfprp</a> (hyprp) writes, one JSON object per line. Only PRP and P-1 lines for 2<sup>n</sup> − 25 with n &lt; 10<sup>7</sup> are kept; anything else in the file is ignored. dfprp lines must carry their checksum, and each is credited to the name and GPU written in it. No proof file is needed. Large files are sent in parts of up to 1,000 lines.</p>
     <form class="form" id="up-form" novalidate>
       <div class="form-row">
         <div class="field">
@@ -130,10 +130,10 @@
         </div>
       </div>
       <div class="field">
-        <label for="up-file">results.json.txt or results.jsonl</label>
+        <label for="up-file">results.json.txt</label>
         <div class="drop" id="up-drop">
           <span>Drop the file here, or choose it:</span>
-          <input type="file" id="up-file" accept=".txt,.json,.jsonl,text/plain,application/json" multiple>
+          <input type="file" id="up-file" accept=".txt,.json,text/plain,application/json" multiple>
         </div>
       </div>
       <div class="field">
