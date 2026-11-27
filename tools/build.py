@@ -110,12 +110,21 @@ NAME_COMPUTER = re.compile(r"^(.*?\S)(\s+-\s*|\s*-\s+)(\S.*)$")  # "Name - compu
 COMPUTER_ID = re.compile(r"^(GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|PCI-[0-9a-f:.]{1,24}"
                          r"|[A-Za-z0-9][A-Za-z0-9._-]{0,62})$", re.I)
 USER_NAME = re.compile(r"^[\w ._\-()\[\]+#]+$")   # the characters the Worker allows in a credit name
+GPU_UUID = re.compile(r"^GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+DEFAULT_COMPUTER = "DEFAULT"   # a sieve run's computer when it names no GPU UUID, as ANONYMOUS is a missing name (Anna, 2026-11-27)
 
 
 def with_computer(who, computer):
     """The credit "name - computer" when the program named its machine itself: the person from `who` (an upload's
     handle, or the project's own name), the computer from the program, which replaces any typed one."""
     return shown_name(name_only(shown_name(who)) + " - " + computer) if computer else who
+
+
+def sieve_computer(computer):
+    """The computer a sieve run is credited to: the GPU's UUID the program wrote, or DEFAULT when it wrote no UUID (a PCI
+    address or a host name). The rule lives here, not in slice_digest(), so the cached digests stay valid."""
+    computer = str(computer or "").strip()
+    return computer if GPU_UUID.match(computer) else DEFAULT_COMPUTER if computer else ""
 
 
 def shown_name(who):
@@ -129,7 +138,15 @@ def shown_name(who):
         who = NAME_ALIASES[who]
     elif m and m.group(1) in NAME_ALIASES:
         who = NAME_ALIASES[m.group(1)] + m.group(2) + m.group(3)
-    return OWN_NAME.get(who, who)
+    return placeholders(OWN_NAME.get(who, who))
+
+
+def placeholders(who):
+    """ANONYMOUS (no name given) and DEFAULT (no computer named) in one spelling, whatever case they came in (the upload
+    server writes "anonymous"); the pages show both in italics."""
+    m = NAME_COMPUTER.match(who)
+    name, sep, pc = (m.group(1), m.group(2), m.group(3)) if m else (who, "", "")
+    return ("ANONYMOUS" if name.lower() == "anonymous" else name) + sep + ("DEFAULT" if pc.lower() == "default" else pc)
 
 
 def name_only(who):
@@ -815,12 +832,16 @@ def uploaded_sieve(root, notes, accepted):
         run = up.get("run") or {}
         log = {"start": run.get("start") or None, "end": run.get("end") or None, "wall_s": float(run.get("wall_s") or 0),
                "program": run.get("program") or "Mass Prime Siever 12.0", "named": bool(run.get("program"))}
-        handle = shown_name(up.get("handle") or "anonymous")[:40]
+        handle = shown_name(up.get("handle") or "ANONYMOUS")[:40]
         # the computer the program wrote into results.json, which the Join page sends beside the handle (14.1+)
         sent = str(up.get("computer") or "").strip()
         sent = sent if COMPUTER_ID.match(sent) else ""
         for e in read_mps_file(path, notes, log, upload=True):
-            who = with_computer(handle, sent or e.get("computer") or "")
+            computer = sieve_computer(sent or e.get("computer"))
+            # the GPU's UUID the program wrote wins; without one, the computer typed beside the name (the Join page opens
+            # the Computer field then), and with none typed either, DEFAULT: the sieve credit always names a computer
+            who = (with_computer(handle, computer) if computer and computer != DEFAULT_COMPUTER
+                   else handle if NAME_COMPUTER.match(handle) else with_computer(handle, DEFAULT_COMPUTER))
             odd = len(range(max(e["n0"], 5) | 1, min(e["n1"], N_MAX), 2))
             low = e["p0"] if e["p0"] >= 1000 else UPLOAD_JUDGE_FROM   # as slice_digest() counted e["found"]
             found = e["found"]
@@ -1340,7 +1361,7 @@ class Archive:
             if src is None:
                 g = e.get("log") or {}
                 src = {"p0": key[0], "p1": key[1], "n0": key[2], "n1": key[3], "end": when(e) or None,
-                       "by": self.index(self.users, e.get("who") or with_computer(e.get("user") or self.credit, e.get("computer") or "")),
+                       "by": self.index(self.users, e.get("who") or with_computer(e.get("user") or self.credit, sieve_computer(e.get("computer")))),
                        "upload": "upload" in e, "f": {},
                        "prog": g.get("program") or "Mass Prime Siever 12.0", "st": g.get("start") or None,
                        "s": round(float(g.get("wall_s") or 0)), "key": k}
@@ -1366,13 +1387,17 @@ class Archive:
                 self.notes.add("broken JSON line", path)
                 continue
             if isinstance(j, dict) and j.get("k") == 1 and j.get("b") == 2 and j.get("c") == -25 and isinstance(j.get("n"), int):
-                # a GPU program's line (hyprp) names its person and card itself: "user" (the notebook's NAME,
+                # a GPU program's line (dfprp, once hyprp) names its person and card itself: "user" (the notebook's NAME,
                 # ANONYMOUS when none) and "gpu_uuid"; credit "user - GPU-…" rather than the upload's handle
                 uuid = str(j.get("gpu_uuid") or "").strip()
                 if isinstance(j.get("program"), str) and COMPUTER_ID.match(uuid):
-                    # the team notebook writes "NAME - GPU-…"; the person is the part before the computer
+                    # the team notebook writes "NAME - GPU-…"; the person is the part before the computer. A line that
+                    # names nobody (written before the notebook added "user", or ANONYMOUS) goes to the name the
+                    # uploader typed (Anna, 2026-11-27: the first 4 dfprp results, uploaded as "Junhao Z")
                     name = name_only(" ".join(str(j.get("user") or "").split()))
                     name = name if name and len(name) <= 40 and USER_NAME.match(name) else "ANONYMOUS"
+                    if name.upper() == "ANONYMOUS":
+                        name = name_only(user)
                     self.add_result(j, with_computer(name, uuid), path, uploaded=True)
                 else:
                     self.add_result(j, user, path, uploaded=True)
@@ -1393,7 +1418,9 @@ class Archive:
         prog = j.get("program") or {}
         if isinstance(prog, str):
             # hyprp names itself with a plain string ("hyprp"), plus "version" when it has one
-            prog_label = " ".join(x for x in (prog.strip() or "?", str(j.get("version") or "").strip()) if x)
+            # (the program was called hyprp before it was named dfprp; Anna, 2026-11-27)
+            name = "dfprp" if prog.strip().lower() == "hyprp" else prog.strip()
+            prog_label = " ".join(x for x in (name or "?", str(j.get("version") or "").strip()) if x)
         else:
             prog_label = " ".join(str(x) for x in (prog.get("name", "?"), prog.get("version", ""))).strip()
             if prog.get("build"):

@@ -2,10 +2,6 @@
  "credit": "Boyan H",
  "credit_computer": "home",
  "run_by": "Boyan H",
- "next_sieve": {
-  "p_from": 1448000000000000,
-  "p_to": 1500000000000000
- },
  "sieve_max": 1500000000000000,
  "oeis": "A379020",
  "links": {
@@ -27,8 +23,8 @@
   "laptop_prp_per_day": 230,
   "t4": {
    "unit": "T4-Hour",
-   "definition": "1 T4-Hour = what one Tesla T4 card, running alone, computes in one hour. A PRP test of n costs n x (T4 ms per iteration at the FFT length and digit mode hyprp uses for n) / 3,600,000 T4-Hours; below 16K the 16K time is used.",
-   "measured": "2026-11-25, Kaggle Tesla T4, hyprp -bench (CUDA), mean of the two cards of one session, each running alone",
+   "definition": "1 T4-Hour = what one Tesla T4 card, running alone, computes in one hour. A PRP test of n costs n x (T4 ms per iteration at the FFT length and digit mode dfprp uses for n) / 3,600,000 T4-Hours; below 16K the 16K time is used.",
+   "measured": "2026-11-25, Kaggle Tesla T4, dfprp -bench (CUDA), mean of the two cards of one session, each running alone",
    "modes": [
     "16-bit digits (n <= 16 L)",
     "32-bit digits"
@@ -165,9 +161,9 @@
   {
    "state": "done",
    "tag": "1 · done",
-   "title": "Sieve p < 4 × 10^13",
-   "where": "Laptop p < 10^13 · OpenCL; Kaggle 10^13 – 4 × 10^13 · CUDA",
-   "figure": "47,262 left"
+   "title": "Sieve p < 1.5 × 10^15",
+   "where": "Laptop p < 10^13 · OpenCL; Kaggle 10^13 – 1.5 × 10^15 · CUDA",
+   "figure": "42,332 left"
   },
   {
    "state": "next",
@@ -221,10 +217,10 @@
   {
    "p_from": 1448000000000000,
    "p_to": 1500000000000000,
-   "machine": "Not assigned yet",
-   "backend": "—",
-   "status": "Planned",
-   "survivors": "≈ 42,350"
+   "machine": "Kaggle · T4",
+   "backend": "CUDA",
+   "status": "Done",
+   "survivors": "42,332"
   }
  ],
  "benchmarks": {
@@ -428,6 +424,14 @@
   [
    "2026-11-18",
    "Mass Prime Siever 14.0: the GPU now generates its own primes and splits n into residue classes per prime. Two Kaggle T4s sieve about 6 × 10^12 per hour, 2.1× faster than 13.0."
+  ],
+  [
+   "2026-11-18",
+   "3.6M – 5M sieved to 10^14: 45,950 of the 700,000 odd n are left."
+  ],
+  [
+   "2026-11-26",
+   "3.6M – 5M sieved to 1.5 × 10^15 with free Kaggle T4 sessions from the team: 42,332 of the 700,000 odd n are left. The sieve pauses here; the PRP tests go on."
   ]
  ],
  "pause": {

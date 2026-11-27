@@ -354,7 +354,7 @@
         return '<tr><td class="r"><a href="exponent.html?n=' + f.n + '">' + fmt(f.n) + '</a></td><td class="wrap">' + bigNum(f.p) +
           (f.together ? '<br><span class="muted small">found in one run with ' + (f.together === 2 ? 'another prime' : (f.together - 1) + ' other primes') + '</span>' : '') + '</td><td class="r">' +
           f.digits + '</td><td class="r">' + f.bits + '</td><td class="r">' + fmt(f.b1) + '</td><td class="r">' + (f.b2 ? fmt(f.b2) : '—') + '</td><td>' +
-          esc(S.minute(f.found)) + '</td>' + (showWho ? '<td class="text">' + esc(f.who) + '</td>' : '') + '</tr>';
+          esc(S.minute(f.found)) + '</td>' + (showWho ? '<td class="text">' + S.creditHTML(f.who) + '</td>' : '') + '</tr>';
       }).join('') + '</tbody></table>';
   }
 

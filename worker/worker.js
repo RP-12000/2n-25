@@ -286,9 +286,10 @@ export function checkLine(j) {
   return { skip: `worktype ${wt} is not collected` };
 }
 
-/** A line of hyprp's results.jsonl (dfprp v1.0+): {n, k, b, c, worktype: "PRP-3", status, res64, res2048, program: "hyprp",
- *  version, gpu_uuid, checksum, user, timestamp, ...}. Its "checksum" is the CRC-32 (zlib/IEEE, 8 upper-case hex digits)
- *  of "hyprp,<version>,1,2,<n>,<c>,<status>,<RES64>,<RES2048>": it guards against slips, not against a forged line.
+/** A line of dfprp's results.json.txt (v1.0+): {n, k, b, c, worktype: "PRP-3", status, res64, res2048, program: "dfprp"
+ *  ("hyprp" before the program was renamed), version, gpu_uuid, checksum, user, timestamp, ...}. Its "checksum" is the
+ *  CRC-32 (zlib/IEEE, 8 upper-case hex digits) of "<program>,<version>,1,2,<n>,<c>,<status>,<RES64>,<RES2048>", with the
+ *  line's own program name first: it guards against slips, not against a forged line.
  *  A line without it (written before dfprp v1.0 had one) is refused. No proof file is asked for. */
 export function checkGpuLine(j, n, wt) {
   if (!/^(hyprp|dfprp)$/i.test(j.program)) return { skip: `program ${String(j.program).slice(0, 20)} is not collected` };
@@ -302,10 +303,10 @@ export function checkGpuLine(j, n, wt) {
   return { rec: { kind: 'prp', n, status: j.status, prime: j.status === 'P', md5: '', suspect: false } };
 }
 
-/** hyprp's checksum of a result line (see checkGpuLine). */
+/** dfprp's checksum of a result line (see checkGpuLine): its program name ("dfprp", or "hyprp" before the rename) leads. */
 export function gpuChecksum(j) {
   const v = typeof j.version === 'number' && Number.isInteger(j.version) ? j.version.toFixed(1) : String(j.version);
-  return crc32(['hyprp', v, 1, 2, j.n, j.c, j.status, String(j.res64).toUpperCase(), String(j.res2048 || '').toUpperCase()].join(','));
+  return crc32([String(j.program), v, 1, 2, j.n, j.c, j.status, String(j.res64).toUpperCase(), String(j.res2048 || '').toUpperCase()].join(','));
 }
 
 let CRC_TABLE = null;

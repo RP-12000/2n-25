@@ -85,13 +85,21 @@
         ' would keep that laptop busy for about ' + months + ' months on its own, so every extra machine shortens the wait for the next prime.';
     }
     var planned = (site.sieve_plan || []).filter(function (s) { return /^planned$/i.test(s.status || ''); });
+    var sieveNext = el('way-sieve').firstElementChild.lastElementChild, sievePill = el('sieve-pill');
     if (site.next_sieve && site.next_sieve.p_to) {
       var nh = S.tfT4Hours(site.model && site.model.t4, site.next_sieve.p_from, site.next_sieve.p_to);
-      el('way-sieve').firstElementChild.lastElementChild.innerHTML = 'p ' + esc(S.depth(site.next_sieve.p_from)) + ' – ' + esc(S.depth(site.next_sieve.p_to)) +
+      sieveNext.innerHTML = 'p ' + esc(S.depth(site.next_sieve.p_from)) + ' – ' + esc(S.depth(site.next_sieve.p_to)) +
         (nh === null ? '' : ' · ' + S.t4cost(nh));
+      sievePill.className = 'pill accent'; sievePill.textContent = 'Needed now';
     } else if (planned.length) {
-      el('way-sieve').firstElementChild.lastElementChild.textContent = 'p ' + S.depth(planned[0].p_from) + ' – ' + S.depth(planned[0].p_to) +
+      sieveNext.textContent = 'p ' + S.depth(planned[0].p_from) + ' – ' + S.depth(planned[0].p_to) +
         (planned.length > 1 ? ', then to ' + S.depth(planned[planned.length - 1].p_to) : '');
+      sievePill.className = 'pill accent'; sievePill.textContent = 'Needed now';
+    } else {
+      // no sieve work planned (content/site.json has no next_sieve and no Planned row): the sieve is paused
+      var reached = actRows.reduce(function (m, r) { var d = r.sieve && r.sieve.depth; return d && (m === null || d < m) ? d : m; }, null);
+      sieveNext.textContent = 'none for now' + (reached ? ' · ' + S.rangeLabel(act.lo, act.hi) + ' is sieved to ' + S.depth(reached) : '');
+      sievePill.className = 'pill muted'; sievePill.textContent = 'Paused';
     }
     var prpRows = el('way-prp');
     prpRows.innerHTML = '<div><span>One test</span><span>' + S.prpCost(M, act.lo) + ' at n = ' + S.M(act.lo) + '</span></div>' +
@@ -211,8 +219,9 @@
     }
     return null; // another work type: ignored, not an error
   }
-  /* A line of hyprp's results.jsonl: the same checks as the Worker's checkGpuLine. Its checksum (CRC-32 of
-     "hyprp,<version>,1,2,<n>,<c>,<status>,<RES64>,<RES2048>") guards against slips; a line without one is refused.
+  /* A line of dfprp's results.json.txt: the same checks as the Worker's checkGpuLine. Its checksum (CRC-32 of
+     "<program>,<version>,1,2,<n>,<c>,<status>,<RES64>,<RES2048>", the line's program first: "dfprp", or "hyprp" before
+     the program was renamed) guards against slips; a line without one is refused.
      The credit comes from the line: "user" and "gpu_uuid". */
   function gpuLineError(j, n) {
     if (!/^(hyprp|dfprp)$/i.test(j.program)) return null;
@@ -223,7 +232,7 @@
     if (typeof j.checksum !== 'string' || !HEX8.test(j.checksum)) return 'no checksum (results from dfprp v1.0 or later carry one)';
     if (typeof j.res2048 !== 'string' || !/^[0-9A-Fa-f]{512}$/.test(j.res2048)) return 'no 2048-bit residue';
     var v = typeof j.version === 'number' && Number.isInteger(j.version) ? j.version.toFixed(1) : String(j.version);
-    var sum = crc32(['hyprp', v, 1, 2, n, j.c, j.status, j.res64.toUpperCase(), j.res2048.toUpperCase()].join(','));
+    var sum = crc32([String(j.program), v, 1, 2, n, j.c, j.status, j.res64.toUpperCase(), j.res2048.toUpperCase()].join(','));
     if (sum !== j.checksum.toUpperCase()) return 'checksum does not match the result (was the line edited?)';
     if (j.status === 'P') {
       var sp = S.smallestFactor(n, 100000);
@@ -446,8 +455,10 @@
   var S = window.Site, fmt = S.fmt, esc = S.esc;
   var el = function (id) { return document.getElementById(id); };
   var HANDLE = /^[\p{L}\p{N} ._\-()[\]+#]+$/u, HANDLE_KEY = '2n25.handle', COMPUTER_KEY = '2n25.computer';
-  // what Mass Prime Siever 14.1 writes as "computer": GPU-<uuid>, PCI-<address>, or a host name
-  var COMPUTER = /^(GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|PCI-[0-9a-f:.]{1,24}|[A-Za-z0-9][A-Za-z0-9._-]{0,62})$/i;
+  // Mass Prime Siever 14.1 writes "computer": the GPU's UUID (GPU-<uuid>, as nvidia-smi -L prints it), or a PCI address
+  // or host name when it cannot read one. A sieve upload is credited to the GPU's UUID; without one, to DEFAULT, the way a
+  // missing name is ANONYMOUS (Anna, 2026-11-27).
+  var GPU_UUID = /^GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, HOME = 'DEFAULT';
   var MAX_N = 1e7, SHOW = 8, STEP = 5000;
   var L = { textBytes: 3 * 1024 * 1024, factorsPerCheck: 150, factorsPerCheckBig: 40, maxP: 1125899906842624, uploadsPerDay: 20 };
   var P50 = 1125899906842624; // from 2^50 up the server checks factors with BigInt, fewer per step
@@ -470,10 +481,30 @@
   (function () {
     // a name saved as "Kelvinizer - w1g0" before the Computer field existed fills both fields
     var h = recall(HANDLE_KEY), c = recall(COMPUTER_KEY), m = /^(.*?\S)(?:\s+-\s*|\s*-\s+)(\S.*)$/.exec(h);
-    if (m) { h = m[1]; c = c || m[2]; }
+    if (m) { h = m[1]; c = c || m[2]; if (c) store(COMPUTER_KEY, c); }
     handleInput.value = h;
-    computerInput.value = c;
+    computerField('');
   })();
+  /* The Computer field is locked: it shows the GPU UUID results.json names (Mass Prime Siever 14.1+), and opens for
+     typing only when the file names none (Anna, 2026-11-27), filled with the computer typed here last time, or DEFAULT. */
+  function computerField(uuids) {
+    if (uuids === null) {
+      if (computerInput.readOnly) computerInput.value = recall(COMPUTER_KEY) || HOME;
+      computerInput.readOnly = false;
+      computerInput.placeholder = HOME;
+    } else {
+      computerInput.value = uuids;
+      computerInput.readOnly = true;
+      computerInput.placeholder = 'read from results.json';
+    }
+    placeholders();
+  }
+  // ANONYMOUS and DEFAULT stand in for a name, in italics as everywhere on the site (app.js Site.nameHTML)
+  function placeholders() {
+    [handleInput, computerInput].forEach(function (i) { i.style.fontStyle = /^(anonymous|default)$/i.test(i.value.trim()) ? 'italic' : ''; });
+  }
+  handleInput.addEventListener('input', placeholders);
+  computerInput.addEventListener('input', placeholders);
   handleInput.addEventListener('change', function () { store(HANDLE_KEY, handleInput.value.trim()); });
   computerInput.addEventListener('change', function () { store(COMPUTER_KEY, computerInput.value.trim()); });
   fileInput.addEventListener('change', function () { readFiles(fileInput.files); });
@@ -487,10 +518,8 @@
   el('tf-clear').addEventListener('click', function () {
     if (tf.busy) return;
     tf.files = {}; tf.plan = null; tf.sent = {}; tf.run++; fileInput.value = '';
-    if (computerInput.readOnly) {
-      computerInput.readOnly = handleInput.readOnly = false;
-      computerInput.value = recall(COMPUTER_KEY); handleInput.value = recall(HANDLE_KEY);
-    }
+    if (handleInput.readOnly) { handleInput.readOnly = false; handleInput.value = recall(HANDLE_KEY); }
+    computerField('');
     el('tf-preview').innerHTML = ''; el('tf-result').innerHTML = ''; setProgress('', null);
     refresh();
   });
@@ -660,6 +689,16 @@
     return later().then(step);
   }
 
+  /* Who a run of Mass Prime Siever 14.1 or later is credited to: its "user" (ANONYMOUS when none was given), and its GPU's
+     UUID when it names one ('' for a PCI address or host name: then the Computer field counts, DEFAULT when left so).
+     Older files name neither: null, and both fields count. Only while the server keeps a computer sent beside the name
+     (/status computer: true). */
+  function credit(e) {
+    if (!tf.computerOk || !e || !('computer' in e || 'user' in e)) return null;
+    var c = String(e.computer || '').trim(), u = String(e.user || '').replace(/\s+/g, ' ').trim();
+    return { user: u && u.length <= 40 && HANDLE.test(u) ? u : 'ANONYMOUS', uuid: GPU_UUID.test(c) ? c : '' };
+  }
+
   /* Factors expected in [P0, P1) over `odd` odd n: about odd × ln(ln P1 / ln P0); matches real runs within a few percent. */
   function expected(odd, P0, P1) { return P0 >= 1000 ? odd * Math.log(Math.log(P1) / Math.log(P0)) : null; }
 
@@ -668,11 +707,11 @@
     var log = tf.files.log ? parseLog(tf.files.log.text) : null;
     var parts = [], perPart = L.textBytes - 4096;
     results.forEach(function (r) {
-      var x = r.x, cur = [], size = 0, start = x.N0, factors = 0;
+      var x = r.x, cur = [], size = 0, start = x.N0, factors = 0, by = credit(x.e);
       function close(end) {
         var a = Math.max(start, 5), oddPart = end > a ? Math.floor((end - (a % 2 ? a : a + 1) + 1) / 2) : 0;
         parts.push({ head: { P0: x.P0, P1: x.P1, N0: start, N1: end }, text: cur.join(''), entries: cur.length, factors: factors,
-          odd: Math.max(0, oddPart), timestamp: String(x.e.Timestamp || '').slice(0, 40) });
+          odd: Math.max(0, oddPart), timestamp: String(x.e.Timestamp || '').slice(0, 40), by: by });
       }
       r.rows.forEach(function (row) {
         var line = row[0] + ' ' + row[1].join(' ') + '\n';
@@ -682,21 +721,19 @@
       close(x.N1);
     });
     var checks = parts.reduce(function (s, p) { return s + slices(p.text, perCheck(p.head)).length; }, 0);
-    // Mass Prime Siever 14.1 and later name the machine in results.json ("computer": the GPU's UUID, a PCI
-    // address, or the host name); one such name for every run fills the Computer field by itself
-    // and the person: "user", the name typed into the notebook (ANONYMOUS when none was given)
-    var computers = {}, users = {};
-    results.forEach(function (r) {
-      var c = String(r.x.e.computer || '').trim(), u = String(r.x.e.user || '').replace(/\s+/g, ' ').trim();
-      computers[COMPUTER.test(c) ? c : ''] = 1;
-      users[u && u.length <= 40 && HANDLE.test(u) ? u : 'ANONYMOUS'] = 1;
-    });
-    var named = Object.keys(computers), computer = tf.computerOk && named.length === 1 && named[0] ? named[0] : '';
-    var people = Object.keys(users), user = computer ? (people.length === 1 ? people[0] : 'ANONYMOUS') : '';
-    tf.plan = { ok: !bad.length, parts: parts, log: log, checks: checks, computer: computer, user: user };
-    if (computer) { computerInput.value = computer; handleInput.value = user; }
-    else if (computerInput.readOnly) { computerInput.value = recall(COMPUTER_KEY); handleInput.value = recall(HANDLE_KEY); }   // the previous file's were not typed
-    computerInput.readOnly = handleInput.readOnly = Boolean(computer);
+    // Mass Prime Siever 14.1 and later name the person and the GPU in each run of results.json; each run is then credited
+    // by itself, so the runs of two GPUs can go up together. A field the file fills is locked; the Computer field opens
+    // only when some run names no GPU UUID, and the computer typed there goes to those runs.
+    var own = parts.length > 0 && parts.every(function (p) { return p.by; });
+    var gpus = parts.length > 0 && parts.every(function (p) { return p.by && p.by.uuid; });
+    var pairs = {};
+    parts.forEach(function (p) { if (p.by) pairs[p.by.user + '\u0000' + p.by.uuid] = p.by; });
+    var named = Object.keys(pairs).map(function (k) { return pairs[k]; });
+    var uniq = function (key) { return named.map(function (b) { return b[key]; }).filter(function (v, i, a) { return v && a.indexOf(v) === i; }).join(', '); };
+    tf.plan = { ok: !bad.length, parts: parts, log: log, checks: checks, own: own, gpus: gpus, named: named };
+    if (own) { handleInput.value = uniq('user'); handleInput.readOnly = true; }
+    else if (handleInput.readOnly) { handleInput.readOnly = false; handleInput.value = recall(HANDLE_KEY); }   // the previous file's name was not typed
+    computerField(gpus ? uniq('uuid') : null);
 
     var rows = results.map(function (r) {
       var x = r.x, want = expected(r.odd, Math.max(x.P0, 2), x.P1), low = want !== null && want >= 100 && r.factors < 0.8 * want;
@@ -707,7 +744,10 @@
     h.push('<div class="scroll-x"><table class="data"><thead><tr><th class="text">Run</th><th>p</th><th>n</th><th class="r">Odd n</th><th class="r">With a factor</th>' +
       '<th class="r">Factors</th><th class="r">Expected</th></tr></thead><tbody>' + rows + '</tbody></table></div>');
     var notes = [];
-    if (computer) notes.push('Credit from results.json: <b>' + esc(user) + '</b>, computer <code>' + esc(computer) + '</code>.');
+    if (named.length) {
+      notes.push('Credit from results.json: ' + named.map(function (b) { return '<b>' + S.nameHTML(b.user) + '</b>' + (b.uuid ? ', computer <code>' + esc(b.uuid) + '</code>' : ''); }).join('; ') + '.' +
+        (gpus ? '' : ' ' + (named.some(function (b) { return !b.uuid; }) ? 'No GPU UUID in the file: ' : '') + 'type the computer, or leave it <i>DEFAULT</i>.'));
+    }
     if (log) notes.push('siever.log: ' + esc(log.program || 'program not named') + (log.wall_s ? ', run time ' + duration(log.wall_s) : '') + '.');
     else notes.push('No siever.log; add it to record the run time.');
     if (results.some(function (r) { return r.x.cut; })) notes.push('* n from 10<sup>7</sup> up is outside this project and is left out.');
@@ -768,20 +808,25 @@
   function send() {
     var plan = tf.plan;
     if (!plan || !plan.ok || tf.busy || !tf.open) return;
-    // the upload carries one name, "Name - Computer"; the site shows the two parts in separate columns
-    var name = handleInput.value.replace(/\s+/g, ' ').trim(), computer = computerInput.value.replace(/\s+/g, ' ').trim();
-    // a computer named by results.json (a GPU UUID is 40 characters by itself) travels on its own; the handle is the name
-    var own = plan.computer || '';
-    if (own) name = plan.user || 'ANONYMOUS';   // both come from results.json, not from the fields
-    var handle = own ? name : computer ? (name || 'anonymous') + ' - ' + computer : name;
-    var wrong = name && !HANDLE.test(name) ? handleInput : !own && computer && !HANDLE.test(computer) ? computerInput : handle.length > 40 ? (own ? handleInput : computerInput) : null;
+    // an upload carries "Name - Computer" (ANONYMOUS and DEFAULT when left empty); the site shows the two parts in
+    // separate columns. A run that names its GPU's UUID (14.1+) sends the name as the handle and the UUID on its own,
+    // since a UUID is 40 characters by itself. The name comes from results.json when the run names it, else from the field.
+    var name = handleInput.value.replace(/\s+/g, ' ').trim(), computer = computerInput.value.replace(/\s+/g, ' ').trim() || HOME;
+    var typedName = !plan.own, typedPC = !plan.gpus;
+    function credit(p) {
+      var user = p.by ? p.by.user : name || 'ANONYMOUS';
+      return p.by && p.by.uuid ? { handle: user, computer: p.by.uuid } : { handle: user + ' - ' + computer, computer: '' };
+    }
+    var wrong = typedName && name && !HANDLE.test(name) ? handleInput
+      : typedPC && (!HANDLE.test(computer) || plan.parts.some(function (p) { return credit(p).handle.length > 40; })) ? computerInput : null;
     if (wrong) {
-      el('tf-result').innerHTML = msg('err', own ? 'The name for credit may use letters, digits, spaces and . _ - ( ) [ ] + #, at most 40 characters.'
-        : 'The name for credit and the computer may use letters, digits, spaces and . _ - ( ) [ ] + #, at most 40 characters for both together.');
+      el('tf-result').innerHTML = msg('err', 'The name for credit and the computer may use letters, digits, spaces and . _ - ( ) [ ] + #, at most 40 characters for both together.');
       wrong.focus();
       return;
     }
-    if (!own) { store(HANDLE_KEY, name); store(COMPUTER_KEY, computer); }
+    if (typedName) store(HANDLE_KEY, name);
+    if (typedPC) store(COMPUTER_KEY, computer);
+    if (plan.own) name = plan.named.length === 1 ? plan.named[0].user : '';   // for the thank-you line
     var note = noteInput.value.trim().slice(0, 500), log = plan.log || {};
     var todo = [], doneChecks = 0;
     plan.parts.forEach(function (p, i) { if (!tf.sent[i]) todo.push(i); });
@@ -795,7 +840,8 @@
       if (k >= todo.length) return done();
       var idx = todo[k], p = plan.parts[idx], label = todo.length > 1 ? 'Upload ' + (k + 1) + ' of ' + todo.length + ': ' : '';
       var fd = new FormData();
-      fd.append('meta', JSON.stringify({ head: p.head, handle: handle, computer: own, note: note, timestamp: p.timestamp,
+      var who = credit(p);
+      fd.append('meta', JSON.stringify({ head: p.head, handle: who.handle, computer: who.computer, note: note, timestamp: p.timestamp,
         run: { program: log.program || '', start: log.start || '', end: log.end || '', wall_s: log.wall_s || 0 },
         counts: { odd: p.odd, prp: p.odd - p.entries } }));
       fd.append('factors', new Blob([p.text], { type: 'text/plain' }), 'factors.txt');

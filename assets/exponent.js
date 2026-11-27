@@ -441,8 +441,8 @@
       } else {
         // a prime known before this project: name who found it first, then this project's re-test
         var before = pInfo.discoverer && pInfo.discoverer !== whoAndComputer(pInfo.who || own())[0];
-        line = (before ? 'First found by ' + esc(pInfo.discoverer) + (pInfo.discovered ? ', ' + esc(pInfo.discovered) : '') + ' · PRP-3 re-test ' : 'PRP-3 result ') +
-          esc(pInfo.found) + ' UTC · ' + esc(whoAndComputer(pInfo.who || own()).filter(Boolean).join(' · ')) + (pInfo.program ? ' · ' + esc(pInfo.program) : '');
+        line = (before ? 'First found by ' + S.nameHTML(pInfo.discoverer) + (pInfo.discovered ? ', ' + esc(pInfo.discovered) : '') + ' · PRP-3 re-test ' : 'PRP-3 result ') +
+          esc(pInfo.found) + ' UTC · ' + whoAndComputer(pInfo.who || own()).filter(Boolean).map(S.nameHTML).join(' · ') + (pInfo.program ? ' · ' + esc(pInfo.program) : '');
         tests = [['PRP-3', 'probable prime', state('Probable prime', 'prime')],
           pInfo.proof_power ? ['Proof', 'power ' + pInfo.proof_power, state('Kept · not certified yet', 'muted')] : ['Proof', '—', '—']];
       }
@@ -678,7 +678,7 @@
         out.map(function (r) {
           var h = r.who === '—' ? ['—', ''] : whoAndComputer(r.who);
           return '<tr><td class="r">' + r.p + '</td><td class="r">' + r.digits + '</td><td class="r">' + r.bits + '</td><td>' + r.pm1 +
-            '</td><td>' + r.date + '</td><td>' + esc(r.how) + '</td><td class="text">' + esc(h[0]) + '</td><td class="text">' + (h[1] ? esc(h[1]) : '<span class="muted">—</span>') +
+            '</td><td>' + r.date + '</td><td>' + esc(r.how) + '</td><td class="text">' + S.nameHTML(h[0]) + '</td><td class="text">' + (h[1] ? S.nameHTML(h[1]) : '<span class="muted">—</span>') +
             '</td><td class="r">' + r.b1 + '</td><td class="r">' + r.b2 + '</td></tr>';
         }).join('') + '</tbody></table></div>' + (text ? '<p class="small">' + esc(text) + '</p>' : '');
     } else {
@@ -812,8 +812,8 @@
       var lines = function (f) { return r.found.map(f).join('<br>'); };
       var when = 'Finished ' + String(r.end || '').slice(0, 19) + ' UTC' + (r.st ? '; started ' + String(r.st).slice(0, 19) : '');
       var tip = r.s ? fmt(Math.round(r.s)) + ' s of run time' + (odd ? ' for the ' + fmt(odd) + ' odd n in ' + blockText(r.block) : '') : '';
-      return '<tr><td title="' + esc(when) + '">' + stamp(r.end) + '</td><td class="text">' + esc(r.who) + '</td>' +
-        (showPC ? '<td class="text"' + (r.station ? ' title="' + esc(r.station) + '"' : '') + '>' + (r.computer ? esc(r.computer) : '<span class="muted">—</span>') + '</td>' : '') +
+      return '<tr><td title="' + esc(when) + '">' + stamp(r.end) + '</td><td class="text">' + S.nameHTML(r.who) + '</td>' +
+        (showPC ? '<td class="text"' + (r.station ? ' title="' + esc(r.station) + '"' : '') + '>' + (r.computer ? S.nameHTML(r.computer) : '<span class="muted">—</span>') + '</td>' : '') +
         (showProg ? '<td class="text">' + (esc(S.prog(r.prog)) || '—') + '</td>' : '') +
         '<td class="r">' + pText(r.p[0]) + '</td><td class="r">' + pText(r.p[1]) + '</td>' +
         (r.found.length ? '<td class="r">' + lines(function (f) { return S.fmtBig(f.p); }) + '</td><td class="r">' + lines(function (f) { return f.p.length; }) +
@@ -890,7 +890,7 @@
         '<div class="table-wrap"><table class="data"><thead><tr><th>Date (UTC)</th><th class="text">Work</th><th class="text">Who</th><th class="text">Computer</th><th class="text">Program</th><th>Parameters</th><th>Result</th></tr></thead><tbody>' +
         H.map(function (h) {
           var w = h[5] === '' ? ['', ''] : whoAndComputer(h[5]), dash = '<span class="muted">—</span>';
-          return '<tr><td>' + h[0] + '</td><td class="text">' + h[1] + '</td><td class="text">' + (w[0] ? esc(w[0]) : dash) + '</td><td class="text">' + (w[1] ? esc(w[1]) : dash) +
+          return '<tr><td>' + h[0] + '</td><td class="text">' + h[1] + '</td><td class="text">' + (w[0] ? S.nameHTML(w[0]) : dash) + '</td><td class="text">' + (w[1] ? S.nameHTML(w[1]) : dash) +
             '</td><td class="text">' + h[2] + '</td><td>' + h[3] + '</td><td class="wrap">' + h[4] + '</td></tr>';
         }).join('') +
         '</tbody></table></div></div>' : '');

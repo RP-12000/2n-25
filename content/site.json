@@ -1,10 +1,9 @@
 {
-  "_about": "Hand-written facts and plans for the website. tools/build.py copies this into data/site.json. Edit it when plans change, then rebuild. confirmed_primes: n of probable primes reported in uploads, or found by the Prime95 run on this PC (live/), that you have re-tested; until then the site shows them as being verified. accepted_sieve_uploads: ids of uploaded sieve slices (Submissions/<id>/TF) to count toward the sieve depth even though they found fewer factors than expected; their checked factors strike n out either way. status_since: the Status page draws the frontier and PRP results per day from this date; the History page keeps the whole story. credit: the name the project's own results and factors are credited to; factors below 10^7, which any program finds by itself, carry no name. aliases: {old name: new name}; results and uploads sent under an old name are shown under the new one, whether it is the whole name or the part before the computer (Kelvinizer - w1g0 shows as Boyan H - w1g0), without changing the archive. credit_computer: the computer the project's own work ran on (its PRP, P-1 and sieve runs that came from the archive, not from an upload); the pages show that work as credit with this computer, the way an upload names its computer. run_by: who runs the search, as the Join page names it; the results stay credited to credit. next_sieve: the p range the Join page gives as the next sieve work ({p_from, p_to}); without it, the first Planned row of sieve_plan. sieve_max: how far the sieve is meant to go; the Status page's sieve depth meter runs from 0 to it (10^15 without it). discoverers: who first found each prime below `below` and when (year-month), from PRPTop (Henri & Renaud Lifchitz's PRP Records); a prime below `below` that is not listed is credited to `unknown`; from `below` up, every prime was first found by this project. exponent_start_after: with no n in its address, the Exponent page opens at the smallest n with no known factor and no PRP test (summary.json next_open); only when that list is missing, at the first n above this with no known factor. sieve_plan: the sieve stages for the active range; the Sieve page draws the stages not marked Done as planned work. ranks: Top PRP ranks on PRPTop, shown only while archive/prptop.json is missing; on the PC with the archive, tools/auto_update.py reads them again once a day (tools/prptop_ranks.py). sieve_targets: the sieve target of a range other than sieve_target, as {lo, hi, target, note}; the Status, Exponent and Ranges pages compare that range's sieve with it, and note says why. sieve_factors_not_kept: ranges whose first sieve kept no list of the factors it found ({lo, hi, why}); when such a range is sieved again, the factors above 10^7 below the first sieve's depth are credited to the second sieve, the first one to find a record of them.",
+  "_about": "Hand-written facts and plans for the website. tools/build.py copies this into data/site.json. Edit it when plans change, then rebuild. confirmed_primes: n of probable primes reported in uploads, or found by the Prime95 run on this PC (live/), that you have re-tested; until then the site shows them as being verified. accepted_sieve_uploads: ids of uploaded sieve slices (Submissions/<id>/TF) to count toward the sieve depth even though they found fewer factors than expected; their checked factors strike n out either way. status_since: the Status page draws the frontier and PRP results per day from this date; the History page keeps the whole story. credit: the name the project's own results and factors are credited to; factors below 10^7, which any program finds by itself, carry no name. aliases: {old name: new name}; results and uploads sent under an old name are shown under the new one, whether it is the whole name or the part before the computer (Kelvinizer - w1g0 shows as Boyan H - w1g0), without changing the archive. credit_computer: the computer the project's own work ran on (its PRP, P-1 and sieve runs that came from the archive, not from an upload); the pages show that work as credit with this computer, the way an upload names its computer. run_by: who runs the search, as the Join page names it; the results stay credited to credit. next_sieve: the p range the Join page gives as the next sieve work ({p_from, p_to}); without it, the first Planned row of sieve_plan; with neither, the Join page says the sieve is paused and hands out no sieve work. sieve_max: how far the sieve is meant to go; the Status page's sieve depth meter runs from 0 to it (10^15 without it). discoverers: who first found each prime below `below` and when (year-month), from PRPTop (Henri & Renaud Lifchitz's PRP Records); a prime below `below` that is not listed is credited to `unknown`; from `below` up, every prime was first found by this project. exponent_start_after: with no n in its address, the Exponent page opens at the smallest n with no known factor and no PRP test (summary.json next_open); only when that list is missing, at the first n above this with no known factor. sieve_plan: the sieve stages for the active range; the Sieve page draws the stages not marked Done as planned work. ranks: Top PRP ranks on PRPTop, shown only while archive/prptop.json is missing; on the PC with the archive, tools/auto_update.py reads them again once a day (tools/prptop_ranks.py). sieve_targets: the sieve target of a range other than sieve_target, as {lo, hi, target, note}; the Status, Exponent and Ranges pages compare that range's sieve with it, and note says why. sieve_factors_not_kept: ranges whose first sieve kept no list of the factors it found ({lo, hi, why}); when such a range is sieved again, the factors above 10^7 below the first sieve's depth are credited to the second sieve, the first one to find a record of them.",
   "credit": "Boyan H",
   "credit_computer": "home",
   "aliases": {"Kelvinizer": "Boyan H"},
   "run_by": "Boyan H",
-  "next_sieve": {"p_from": 1448000000000000, "p_to": 1500000000000000},
   "sieve_max": 1500000000000000,
   "oeis": "A379020",
   "links": {
@@ -26,8 +25,8 @@
     "laptop_prp_per_day": 230,
     "t4": {
       "unit": "T4-Hour",
-      "definition": "1 T4-Hour = what one Tesla T4 card, running alone, computes in one hour. A PRP test of n costs n x (T4 ms per iteration at the FFT length and digit mode hyprp uses for n) / 3,600,000 T4-Hours; below 16K the 16K time is used.",
-      "measured": "2026-11-25, Kaggle Tesla T4, hyprp -bench (CUDA), mean of the two cards of one session, each running alone",
+      "definition": "1 T4-Hour = what one Tesla T4 card, running alone, computes in one hour. A PRP test of n costs n x (T4 ms per iteration at the FFT length and digit mode dfprp uses for n) / 3,600,000 T4-Hours; below 16K the 16K time is used.",
+      "measured": "2026-11-25, Kaggle Tesla T4, dfprp -bench (CUDA), mean of the two cards of one session, each running alone",
       "modes": ["16-bit digits (n <= 16 L)", "32-bit digits"],
       "tf": {
         "definition": "Sieving (trial factoring) the active range over p in [p1, p2) costs (number of primes in [p1, p2)) / primes_per_hour T4-Hours: the time Mass Prime Siever 14.0 on one T4 needs for it. Older sievers and other hardware are counted by the same rate.",
@@ -94,9 +93,9 @@
     {
       "state": "done",
       "tag": "1 · done",
-      "title": "Sieve p < 4 × 10^13",
-      "where": "Laptop p < 10^13 · OpenCL; Kaggle 10^13 – 4 × 10^13 · CUDA",
-      "figure": "47,262 left"
+      "title": "Sieve p < 1.5 × 10^15",
+      "where": "Laptop p < 10^13 · OpenCL; Kaggle 10^13 – 1.5 × 10^15 · CUDA",
+      "figure": "42,332 left"
     },
     {
       "state": "next",
@@ -150,10 +149,10 @@
     {
       "p_from": 1448000000000000,
       "p_to": 1500000000000000,
-      "machine": "Not assigned yet",
-      "backend": "—",
-      "status": "Planned",
-      "survivors": "≈ 42,350"
+      "machine": "Kaggle · T4",
+      "backend": "CUDA",
+      "status": "Done",
+      "survivors": "42,332"
     }
   ],
   "benchmarks": {
@@ -357,6 +356,14 @@
     [
       "2026-11-18",
       "Mass Prime Siever 14.0: the GPU now generates its own primes and splits n into residue classes per prime. Two Kaggle T4s sieve about 6 × 10^12 per hour, 2.1× faster than 13.0."
+    ],
+    [
+      "2026-11-18",
+      "3.6M – 5M sieved to 10^14: 45,950 of the 700,000 odd n are left."
+    ],
+    [
+      "2026-11-26",
+      "3.6M – 5M sieved to 1.5 × 10^15 with free Kaggle T4 sessions from the team: 42,332 of the 700,000 odd n are left. The sieve pauses here; the PRP tests go on."
     ]
   ],
   "pause": {

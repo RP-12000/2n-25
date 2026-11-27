@@ -44,11 +44,11 @@
     };
     document.getElementById('rep-people-meta').textContent = 'sorted by T4-Hours';
     document.getElementById('rep-people').innerHTML = '<table class="data"><thead>' + head.replace('%NAME%', 'Contributor') + '</thead><tbody>' +
-      people.map(function (p, i) { return line(i, esc(p.name || '—'), p); }).join('') + '</tbody></table>';
+      people.map(function (p, i) { return line(i, S.nameHTML(p.name || '—'), p); }).join('') + '</tbody></table>';
 
     var comps = [];
     people.forEach(function (p) {
-      (p.computers || []).forEach(function (c) { comps.push({ label: esc(p.name || '—') + (c.name ? ' <span class="muted">· ' + esc(c.name) + '</span>' : ''), o: c }); });
+      (p.computers || []).forEach(function (c) { comps.push({ label: S.nameHTML(p.name || '—') + (c.name ? ' <span class="muted">· ' + S.nameHTML(c.name) + '</span>' : ''), o: c }); });
     });
     comps.sort(function (a, b) { return b.o.t4h - a.o.t4h; });
     document.getElementById('rep-comp').innerHTML = '<table class="data"><thead>' + head.replace('%NAME%', 'Contributor · computer') + '</thead><tbody>' +
@@ -57,7 +57,7 @@
     var t4m = (site.model && site.model.t4) || {}, R = t4m.tf && t4m.tf.primes_per_hour;
     var act = pg && pg.active, fut = pg && pg.future;
     document.getElementById('rep-how').innerHTML =
-      '<p><strong>PRP.</strong> A test of n is n squarings at the FFT length hyprp, the project’s GPU program, uses for n; it counts n × (T4 milliseconds per squaring at that length) ÷ 3,600,000 T4-Hours, from a benchmark on a Kaggle T4' +
+      '<p><strong>PRP.</strong> A test of n is n squarings at the FFT length dfprp, the project’s GPU program, uses for n; it counts n × (T4 milliseconds per squaring at that length) ÷ 3,600,000 T4-Hours, from a benchmark on a Kaggle T4' +
       (t4m.measured ? ' (' + esc(t4m.measured) + ')' : '') + '. A test near n = 3.6M is ' + S.t4cost(S.t4Hours(t4m, 3600000)) + '. Tests run by Prime95 on a CPU count the same.</p>' +
       '<p><strong>Sieve.</strong> A slice over p from p₁ to p₂ counts (number of primes in that range) ÷ ' + (R ? S.depth(R) : '—') +
       ' T4-Hours: Mass Prime Siever 14.0 sieves about that many primes an hour on one T4 (measured on 3.6M ≤ n &lt; 5M). Slices by older sievers, other GPUs and CPUs count the same.</p>' +

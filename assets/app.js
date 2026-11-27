@@ -121,6 +121,17 @@
     var m = /^(.*?\S)(?:\s+-\s*|\s*-\s+)(\S.*)$/.exec(String(h || ''));
     return m ? [m[1], m[2]] : [String(h || ''), ''];
   };
+  // ANONYMOUS (no name given) and DEFAULT (no computer named) stand in for a name: shown in capitals and italics, whatever
+  // case they came in (Anna, 2026-11-27); a real name is escaped as it is
+  Site.nameHTML = function (s) {
+    var t = String(s == null ? '' : s).trim();
+    return /^(anonymous|default)$/i.test(t) ? '<i>' + t.toUpperCase() + '</i>' : Site.esc(s == null ? '' : String(s));
+  };
+  // "Boyan H - home" as HTML, both parts through nameHTML
+  Site.creditHTML = function (h) {
+    var w = Site.whoAndComputer(h);
+    return Site.nameHTML(w[0]) + (w[1] ? ' - ' + Site.nameHTML(w[1]) : '');
+  };
   Site.shardSize = function () { return SHARD; };
   Site.shardName = function (n) {
     var d = Math.round(Math.log10(1e6 / SHARD)), u = Math.pow(10, d), k = Math.floor(n / SHARD);

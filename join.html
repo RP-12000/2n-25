@@ -45,11 +45,11 @@
 
   <section class="split three" aria-label="Work you can take">
     <article class="card way">
-      <div class="card-head"><h2>Sieve on a GPU</h2><span class="pill accent">Needed now</span></div>
+      <div class="card-head"><h2>Sieve on a GPU</h2><span class="pill muted" id="sieve-pill">Paused</span></div>
       <div class="grow">
-        <p>Mass Prime Siever 14.0 strikes out every n that has a factor below the limit. Any CUDA or OpenCL GPU helps; a free Kaggle session with two T4s works too.</p>
+        <p>Mass Prime Siever 14.1 strikes out every n that has a factor below the limit. Any CUDA or OpenCL GPU helps; a free Kaggle session with two T4s works too.</p>
         <div class="facts-list" id="way-sieve">
-          <div><span>Next</span><span>p 1.45 × 10<sup>15</sup> – 1.5 × 10<sup>15</sup></span></div>
+          <div><span>Next</span><span>none for now · 3.6M – 5M is sieved to 1.5 × 10<sup>15</sup></span></div>
           <div><span>One T4</span><span>≈ 3 × 10<sup>12</sup> per hour</span></div>
           <div><span>Session</span><span>Kaggle 2 × T4 · 11.5 h</span></div>
         </div>
@@ -59,7 +59,7 @@
     <article class="card way">
       <div class="card-head"><h2>PRP tests on a CPU or GPU</h2><span class="pill muted" id="prp-pill">After the 10<sup>12</sup> sieve</span></div>
       <div class="grow">
-        <p>Prime95 on an x86 CPU, or <a href="https://github.com/RP-12000/dfprp">hyprp</a> on a GPU (CUDA on NVIDIA, OpenCL on others), runs a base-3 Fermat test with Gerbicz error checking. This is where primes are found. One T4 tests an n near 3.6M in about 7 minutes.</p>
+        <p>Prime95 on an x86 CPU, or <a href="https://github.com/RP-12000/dfprp">dfprp</a> on a GPU (CUDA on NVIDIA, OpenCL on others), runs a base-3 Fermat test with Gerbicz error checking. This is where primes are found. One T4 tests an n near 3.6M in about 7 minutes.</p>
         <div class="facts-list" id="way-prp">
           <div><span>One test</span><span>0<small>.112</small> T4-Hours at n = 3.6M</span></div>
           <div><span>Laptop</span><span>8 workers · ≈ 230 tests a day</span></div>
@@ -84,9 +84,9 @@
     <div class="card">
       <h2>How to take a range</h2>
       <ol class="steps">
-        <li><span class="i" aria-hidden="true">1</span><div><b>Reserve</b><span>Open a <a id="link-issue-2" href="https://github.com/RP-12000/2n-25/issues/new">GitHub issue</a> with the range you want, for example “PRP 3,600,000 – 3,610,000” or “sieve p 1–2 × 10<sup>12</sup>”. You get a worktodo file back.</span></div></li>
+        <li><span class="i" aria-hidden="true">1</span><div><b>Reserve</b><span>Open a <a id="link-issue-2" href="https://github.com/RP-12000/2n-25/issues/new">GitHub issue</a> with the range you want, for example “PRP 3,700,000 – 3,710,000”. You get a worktodo file back.</span></div></li>
         <li><span class="i" aria-hidden="true">2</span><div><b>Run</b><span>Put the file in Prime95 or Mass Prime Siever. The lines look like the examples here.</span></div></li>
-        <li><span class="i" aria-hidden="true">3</span><div><b>Send results</b><span>Upload Prime95’s <code>results.json.txt</code> with the first form below. Proof files are only needed when a test reports a probable prime; the form asks for them then. Sieve output (<code>results.json</code>, with <code>siever.log</code> if you have it) has its own form. Every factor in it is checked before an n is struck out, and overlapping work from several machines is merged, so it does no harm.</span></div></li>
+        <li><span class="i" aria-hidden="true">3</span><div><b>Send results</b><span>Upload the <code>results.json.txt</code> that Prime95 or dfprp writes with the first form below; no proof file is needed. Sieve output (<code>results.json</code>, with <code>siever.log</code> if you have it) has its own form. Every factor in it is checked before an n is struck out, and overlapping work from several machines is merged, so it does no harm.</span></div></li>
         <li><span class="i" aria-hidden="true">4</span><div><b>Get credit</b><span>Results appear on the exponent pages under the name you choose. A reported prime shows as being verified while the project re-runs the test; then it goes to the OEIS and the PRP Records list with your name.</span></div></li>
       </ol>
     </div>
@@ -115,12 +115,12 @@
 
   <section class="card" id="upload" aria-labelledby="upload-title">
     <div class="card-head"><h2 id="upload-title">Upload PRP results</h2><span class="meta" id="up-status">checking the upload server…</span></div>
-    <p class="body">Send the <code>results.json.txt</code> that Prime95 or mprime writes, or the one <a href="https://github.com/RP-12000/dfprp">dfprp</a> (hyprp) writes, one JSON object per line. Only PRP and P-1 lines for 2<sup>n</sup> − 25 with n &lt; 10<sup>7</sup> are kept; anything else in the file is ignored. dfprp lines must carry their checksum, and each is credited to the name and GPU written in it. No proof file is needed. Large files are sent in parts of up to 1,000 lines.</p>
+    <p class="body">Send the <code>results.json.txt</code> that Prime95 or mprime writes, or the one <a href="https://github.com/RP-12000/dfprp">dfprp</a> writes, one JSON object per line. Only PRP and P-1 lines for 2<sup>n</sup> − 25 with n &lt; 10<sup>7</sup> are kept; anything else in the file is ignored. dfprp lines must carry their checksum, and each is credited to the name and GPU written in it. No proof file is needed. Large files are sent in parts of up to 1,000 lines.</p>
     <form class="form" id="up-form" novalidate>
       <div class="form-row">
         <div class="field">
           <label for="up-handle">Name for credit</label>
-          <input class="input" id="up-handle" name="handle" maxlength="40" autocomplete="nickname" placeholder="anonymous">
+          <input class="input" id="up-handle" name="handle" maxlength="40" autocomplete="nickname" placeholder="ANONYMOUS">
           <span class="hint">Shown on the exponent pages. Letters, digits, spaces and . _ - ( ) [ ] + #</span>
         </div>
         <div class="field">
@@ -157,13 +157,13 @@
       <div class="form-row">
         <div class="field">
           <label for="tf-handle">Name for credit</label>
-          <input class="input" id="tf-handle" maxlength="40" autocomplete="nickname" placeholder="anonymous">
+          <input class="input" id="tf-handle" maxlength="40" autocomplete="nickname" placeholder="ANONYMOUS">
           <span class="hint">Shown with the sieve work on the site.</span>
         </div>
         <div class="field">
-          <label for="tf-computer">Computer <span class="muted fw4">(optional)</span></label>
-          <input class="input" id="tf-computer" maxlength="36" autocomplete="off" placeholder="e.g. w1g0, laptop">
-          <span class="hint">The machine or GPU that ran it, shown next to your name.</span>
+          <label for="tf-computer">Computer</label>
+          <input class="input" id="tf-computer" maxlength="36" autocomplete="off" placeholder="read from results.json" readonly>
+          <span class="hint">The GPU’s UUID, read from results.json. Open for typing only when the file names none; left empty, <i>DEFAULT</i>.</span>
         </div>
         <div class="field">
           <label for="tf-note">Note <span class="muted fw4">(optional)</span></label>
@@ -203,7 +203,7 @@
     </ul>
     <p><a id="link-repo" href="https://github.com/RP-12000/2n-25">Source, data and build script on GitHub →</a></p>
     <h3 class="mt16">Thanks</h3>
-    <p>George Woltman’s Prime95 does every PRP test. Henri Lifchitz’s PRP Records list tracks the large results. Kaggle’s free GPUs carry the deep sieve.</p>
+    <p>George Woltman’s Prime95 runs the PRP tests on CPUs. Henri Lifchitz’s PRP Records list tracks the large results. Kaggle’s free GPUs carried the deep sieve to 1.5 × 10<sup>15</sup> and now run PRP tests too.</p>
   </section>
 </main>
 <footer class="site-footer">

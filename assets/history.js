@@ -204,7 +204,7 @@
     el('hist-sieve-lede').innerHTML = 'Grey: the sieve, which found every factor below its edge; each siever version went a little deeper. ' + againText +
       (heatCols.length ? 'Violet: the ' + fmt(p.heat_factors) + ' prime factors P-1 found above the sieve for ' + S.M(pm1Lo) + ' ≤ n &lt; ' + S.M(pm1Hi) +
         (days.length ? ', ' + esc(days[0][0]) + ' to ' + esc(days[days.length - 1][0]) : '') + ', by size. ' : '') +
-      'The search now sieves deeper instead of running P-1; see the <a href="index.html">Status</a> page for the sieve in progress.';
+      'The search now sieves deeper instead of running P-1; the <a href="sieve.html">Sieve</a> page shows how far.';
 
     var aria = 'Factor size p, log scale, for every odd n below ' + S.M(nmax) + ' in columns of ' + fmt(B) + '. The sieve found every factor below ' +
       S.depth(Math.min.apply(null, depths)) + ' to ' + S.depth(Math.max.apply(null, depths)) + ', depending on the range, and removed ' + fmt(removed) + ' n. ' +

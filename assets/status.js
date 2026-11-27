@@ -423,7 +423,7 @@
         var prime = r.s === 'P' || r.s === 'R';
         return '<tr><td>' + esc(S.minute(r.t)) + '</td><td class="r"><a href="exponent.html?n=' + r.n + '">' + fmt(r.n) + '</a></td><td class="text ' +
           (prime ? 'prime-text' : 'muted') + '">' + (r.s === 'R' ? 'Probable prime (being verified)' : prime ? 'Probable prime' : 'Composite') + '</td><td class="muted">' + esc(r.res64 || '—') +
-          '</td><td class="r">' + S.fft(r.fft) + '</td>' + (showWho ? '<td class="text">' + esc(r.who) + '</td>' : '') + '</tr>';
+          '</td><td class="r">' + S.fft(r.fft) + '</td>' + (showWho ? '<td class="text">' + S.creditHTML(r.who) + '</td>' : '') + '</tr>';
       }).join('') + '</tbody></table>';
     document.getElementById('latest').innerHTML = rows.length ? h : '<p class="small">No results yet.</p>';
   }
