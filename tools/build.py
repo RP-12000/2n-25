@@ -10,8 +10,8 @@ another copy given with --archive), and writes the JSON files that the pages loa
                       once a day by tools/prptop_ranks.py; while that file is missing, the ranks in content/site.json)
   data/sieve.json     P-1 factor sizes and survivor constants
   data/site.json      content/site.json (plans, notes), copied as is
-  data/reports.json   in T4-Hours (content/site.json model.t4): what each contributor and computer has computed (PRP
-                      tests, sieve slices) and the primes they found first; the progress of the whole search, done
+  data/reports.json   in T4-Hours (content/site.json model.t4): what each contributor has computed (PRP tests,
+                      sieve slices) and the primes they found first; the progress of the whole search, done
                       and left, and the PRP work of each range row (written last, from the files above)
   data/n/<x.xx>.json  one file per 0.01M of n: sieve survivors and every P-1 / PRP record; in a range sieved
                       twice, also the survivors of the first sieve (s0)
@@ -2112,7 +2112,7 @@ def _who_and_computer(h):
 
 
 def write_reports(out_dir, content_path):
-    """data/reports.json: what each contributor (and each of their computers) has computed, in T4-Hours
+    """data/reports.json: what each contributor has computed, all their computers together, in T4-Hours
     (content/site.json model.t4; 1 T4-Hour = what one Tesla T4, running alone, computes in one hour):
       PRP: every result counts n x (T4 ms per iteration at the FFT length and digit mode hyprp uses for n) / 3.6e6;
       sieve: every slice counts (primes in its p range) / (primes Mass Prime Siever 14.0 sieves an hour on a T4);
@@ -2164,16 +2164,16 @@ def write_reports(out_dir, content_path):
         return blocks[i] if i >= 0 and n < blocks[i]["hi"] else None
 
     small = {p["n"] for p in site.get("small_primes") or [] if isinstance(p, dict) and "n" in p}
+    # a PRP row is [time, status, res64, fft, proof power, md5, program, user]: no user is the project's own work
+    own = shown_name(site.get("credit", "RP-12000"))   # in a build, shown_name already adds credit_computer
+    if site.get("credit_computer") and not NAME_COMPUTER.match(own):
+        own += " - " + str(site["credit_computer"]).strip()
     people = {}
 
-    entries = {}
-
+    # one row per person: the computer after the hyphen is left out (Anna, 2026-11-27: there will be more and more of them)
     def entry(who):
-        if who not in entries:
-            name, comp = _who_and_computer(who)
-            p = people.setdefault(name, {"name": name, "computers": {}})
-            entries[who] = (p, p["computers"].setdefault(comp, {"name": comp}))
-        return entries[who]
+        name = _who_and_computer(who)[0]
+        return (people.setdefault(name, {"name": name}),)
 
     def add(objs, key, v):
         for o in objs:
@@ -2192,8 +2192,8 @@ def write_reports(out_dir, content_path):
                 b["tested"] += 1
                 b["prp_done"] += h * len(results)
             for r in results:
-                u = r[6] if len(r) > 6 else None
-                who = users[u] if isinstance(u, int) and 0 <= u < len(users) else (u or "")
+                u = r[7] if len(r) > 7 else None
+                who = users[u] if isinstance(u, int) and 0 <= u < len(users) else own
                 objs = entry(who)
                 add(objs, "prp_tests", 1)
                 add(objs, "prp_t4h", h)
@@ -2242,10 +2242,7 @@ def write_reports(out_dir, content_path):
 
     out = []
     for p in people.values():
-        comps = sorted((tidy(c) for c in p.pop("computers").values()), key=lambda c: -c["t4h"])
-        tidy(p)
-        p["computers"] = comps
-        out.append(p)
+        out.append(tidy(p))
     out.sort(key=lambda p: (-p["t4h"], -p["prp_tests"], p["name"]))
     totals = {k: round(v, 4) for k, v in raw.items()}
 

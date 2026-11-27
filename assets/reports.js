@@ -1,5 +1,5 @@
-/* Reports page: the progress of the search below n = 10^7, the PRP work of each range, and what each contributor and
-   computer has computed, all in T4-Hours (data/reports.json). */
+/* Reports page: the progress of the search below n = 10^7, the PRP work of each range, and what each contributor has
+   computed, all in T4-Hours (data/reports.json). */
 (function () {
   'use strict';
   var S = window.Site, fmt = S.fmt, esc = S.esc;
@@ -46,14 +46,6 @@
     document.getElementById('rep-people').innerHTML = '<table class="data"><thead>' + head.replace('%NAME%', 'Contributor') + '</thead><tbody>' +
       people.map(function (p, i) { return line(i, S.nameHTML(p.name || '—'), p); }).join('') + '</tbody></table>';
 
-    var comps = [];
-    people.forEach(function (p) {
-      (p.computers || []).forEach(function (c) { comps.push({ label: S.nameHTML(p.name || '—') + (c.name ? ' <span class="muted">· ' + S.nameHTML(c.name) + '</span>' : ''), o: c }); });
-    });
-    comps.sort(function (a, b) { return b.o.t4h - a.o.t4h; });
-    document.getElementById('rep-comp').innerHTML = '<table class="data"><thead>' + head.replace('%NAME%', 'Contributor · computer') + '</thead><tbody>' +
-      comps.map(function (c, i) { return line(i, c.label, c.o); }).join('') + '</tbody></table>';
-
     var t4m = (site.model && site.model.t4) || {}, R = t4m.tf && t4m.tf.primes_per_hour;
     var act = pg && pg.active, fut = pg && pg.future;
     document.getElementById('rep-how').innerHTML =
@@ -67,7 +59,7 @@
           (act ? S.rangeLabel(act.lo, act.hi) : 'the active range') + ', and a PRP test of every candidate it would leave' : '') + '.</p>' : '') +
       '<p><strong>Primes</strong> are the ones this project found first. The smaller primes of the form it found again on the way had been found before (see the Primes page).</p>' +
       '<p><strong>P-1</strong> is not counted: the search now uses only sieving and PRP tests.</p>' +
-      '<p class="small">Names are as the results and uploads gave them; a computer is the part after the hyphen (Kaggle sessions show as w1g0, w1g1, …).</p>';
+      '<p class="small">Names are as the results and uploads gave them, without the computer after the hyphen: each contributor’s work on all their computers is added together.</p>';
   }).catch(function (e) { S.fail('rep-prog', e); });
 
   // the whole search: everything done and what is left, sieve and PRP
