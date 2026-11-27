@@ -149,6 +149,21 @@ def placeholders(who):
     return ("ANONYMOUS" if name.lower() == "anonymous" else name) + sep + ("DEFAULT" if pc.lower() == "default" else pc)
 
 
+def dfprp_fft(n):
+    """The FFT length dfprp picks for 2^n - 25 in its FP32 + M31 mode (every Kaggle T4 run), for result lines written
+    before dfprp put "fft-length" in them (2026-11-27). Same rule as dfprp's main(): the shortest L = 2^k with
+    n / L at most the bits/word measured for that length, or 2L when n is within 32 of a multiple of L / 4."""
+    L = 64
+    while L <= 1 << 21:
+        k = L.bit_length() - 1
+        if n / L <= (17.7 if k <= 17 else {18: 17.45, 19: 17.2, 20: 16.95, 21: 16.5}[k]):
+            q = L // 4
+            near = L >= 4096 and (n % q < 32 or q - n % q < 32)
+            return 2 * L if near and L < 1 << 21 else L
+        L *= 2
+    return 0
+
+
 def name_only(who):
     """The person in "name - computer": who first found a prime is a person, not a computer."""
     m = NAME_COMPUTER.match(str(who))
@@ -1387,6 +1402,8 @@ class Archive:
                 self.notes.add("broken JSON line", path)
                 continue
             if isinstance(j, dict) and j.get("k") == 1 and j.get("b") == 2 and j.get("c") == -25 and isinstance(j.get("n"), int):
+                if str(j.get("program") or "").lower() in ("dfprp", "hyprp") and not j.get("fft-length"):
+                    j["fft-length"] = dfprp_fft(j["n"])   # Anna, 2026-11-27: show the FFT length for every dfprp result
                 # a GPU program's line (dfprp, once hyprp) names its person and card itself: "user" (the notebook's NAME,
                 # ANONYMOUS when none) and "gpu_uuid"; credit "user - GPU-…" rather than the upload's handle
                 uuid = str(j.get("gpu_uuid") or "").strip()
@@ -1457,7 +1474,7 @@ class Archive:
                                if uploaded else "probable prime in the live Prime95 results: check it, then put its result in the "
                                "range's PRP/results.json.txt or add n to confirmed_primes in content/site.json",
                                f"{where}: n = {n}, by {user}")
-            if proof:
+            if proof.get("power"):   # dfprp writes "proof" with every value null until it makes proofs
                 self.proofs += 1
             rec = [ts, status, j.get("res64", "") if status == "C" else "", j.get("fft-length") or 0,
                    proof.get("power") or 0, str(proof.get("md5") or "")[:8], pid]

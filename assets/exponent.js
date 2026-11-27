@@ -873,13 +873,17 @@
         'B1 = ' + fmt(r[1]) + (r[2] ? ', B2 = ' + fmt(r[2]) : ', stage 1'),
         !qs.length ? 'no factor' : qs.length === 1 ? 'factor ' + wrapBig(qs[0]) : fmt(qs.length) + ' factors, listed above', who]);
     });
+    // dfprp makes no PRP proof yet: its results say "proof power N/A" (Anna, 2026-11-27; replace once it does)
+    function proofText(prog, power) {
+      return power ? ' · proof power ' + power : /^(dfprp|hyprp)\b/i.test(prog) ? ' · proof power N/A' : '';
+    }
     (info.prp || []).forEach(function (r) {
-      var who = user(info.shard, r, 7);
-      H.push([esc(r[0]), 'PRP-3', esc(program(info.shard, r, 6)),
-        'FFT ' + S.fft(r[3]) + (r[4] ? ' · proof power ' + r[4] : ''), r[1] === 'P' ? 'probable prime' : r[1] === 'R' ? 'reported probable prime' : 'composite · ' + esc(r[2]), who]);
+      var who = user(info.shard, r, 7), prog = program(info.shard, r, 6);
+      H.push([esc(r[0]), 'PRP-3', esc(prog),
+        'FFT ' + S.fft(r[3]) + proofText(prog, r[4]), r[1] === 'P' ? 'probable prime' : r[1] === 'R' ? 'reported probable prime' : 'composite · ' + esc(r[2]), who]);
     });
     if (kind === 'prime' && !tiny && !(info.prp || []).length) {
-      H.push([esc(pInfo.found), 'PRP-3', esc(pInfo.program || ''), 'FFT ' + S.fft(pInfo.fft) + (pInfo.proof_power ? ' · proof power ' + pInfo.proof_power : ''), 'probable prime', pInfo.who]);
+      H.push([esc(pInfo.found), 'PRP-3', esc(pInfo.program || ''), 'FFT ' + S.fft(pInfo.fft) + proofText(pInfo.program || '', pInfo.proof_power), 'probable prime', pInfo.who]);
     }
     if (again) H.push(again);
     var el = document.getElementById('history');
