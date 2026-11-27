@@ -105,6 +105,17 @@ RANGE_DIR = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*M\s*[~-]\s*(\d+(?:\.\d+)?)\s*M\s*
 NAME_ALIASES = {}       # content/site.json aliases: an old name -> the name the site shows instead
 OWN_NAME = {}           # credit -> "credit - credit_computer": the project's own name sent with no computer
 NAME_COMPUTER = re.compile(r"^(.*?\S)(\s+-\s*|\s*-\s+)(\S.*)$")  # "Name - computer", as the Exponent page splits it
+# the machine a program names in its own output (Mass Prime Siever 14.1 "computer", hyprp "gpu_uuid"): a GPU's UUID
+# as nvidia-smi -L prints it, a PCI address when the driver reports none, or a host name; the same rule as the Worker
+COMPUTER_ID = re.compile(r"^(GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|PCI-[0-9a-f:.]{1,24}"
+                         r"|[A-Za-z0-9][A-Za-z0-9._-]{0,62})$", re.I)
+USER_NAME = re.compile(r"^[\w ._\-()\[\]+#]+$")   # the characters the Worker allows in a credit name
+
+
+def with_computer(who, computer):
+    """The credit "name - computer" when the program named its machine itself: the person from `who` (an upload's
+    handle, or the project's own name), the computer from the program, which replaces any typed one."""
+    return shown_name(name_only(shown_name(who)) + " - " + computer) if computer else who
 
 
 def shown_name(who):
@@ -721,6 +732,12 @@ def slice_digest(path, upload):
             continue
         factored, prp = e.get("factored") or [], e.get("prp") or []
         d = {"p0": p0, "p1": p1, "n0": n0, "n1": n1, "time": str(e.get("Timestamp") or "")}
+        computer = str(e.get("computer") or "").strip()
+        if COMPUTER_ID.match(computer):
+            d["computer"] = computer   # Mass Prime Siever 14.1+: the GPU's UUID, a PCI address or the host name
+            # and who ran it: the notebook's NAME ("ANONYMOUS" when none was given)
+            user = " ".join(str(e.get("user") or "").split())
+            d["user"] = user if user and len(user) <= 40 and USER_NAME.match(user) else "ANONYMOUS"
         if upload:
             # small primes do not follow ln(ln p1 / ln p0) for this sequence (3 and 5 never divide 2^n - 25),
             # so a slice that starts below 1000 is judged by its factors from UPLOAD_JUDGE_FROM up
@@ -798,8 +815,12 @@ def uploaded_sieve(root, notes, accepted):
         run = up.get("run") or {}
         log = {"start": run.get("start") or None, "end": run.get("end") or None, "wall_s": float(run.get("wall_s") or 0),
                "program": run.get("program") or "Mass Prime Siever 12.0", "named": bool(run.get("program"))}
-        who = shown_name(up.get("handle") or "anonymous")[:40]
+        handle = shown_name(up.get("handle") or "anonymous")[:40]
+        # the computer the program wrote into results.json, which the Join page sends beside the handle (14.1+)
+        sent = str(up.get("computer") or "").strip()
+        sent = sent if COMPUTER_ID.match(sent) else ""
         for e in read_mps_file(path, notes, log, upload=True):
+            who = with_computer(handle, sent or e.get("computer") or "")
             odd = len(range(max(e["n0"], 5) | 1, min(e["n1"], N_MAX), 2))
             low = e["p0"] if e["p0"] >= 1000 else UPLOAD_JUDGE_FROM   # as slice_digest() counted e["found"]
             found = e["found"]
@@ -1319,7 +1340,8 @@ class Archive:
             if src is None:
                 g = e.get("log") or {}
                 src = {"p0": key[0], "p1": key[1], "n0": key[2], "n1": key[3], "end": when(e) or None,
-                       "by": self.index(self.users, e.get("who") or self.credit), "upload": "upload" in e, "f": {},
+                       "by": self.index(self.users, e.get("who") or with_computer(e.get("user") or self.credit, e.get("computer") or "")),
+                       "upload": "upload" in e, "f": {},
                        "prog": g.get("program") or "Mass Prime Siever 12.0", "st": g.get("start") or None,
                        "s": round(float(g.get("wall_s") or 0)), "key": k}
                 listed_runs[key] = src
@@ -1344,7 +1366,16 @@ class Archive:
                 self.notes.add("broken JSON line", path)
                 continue
             if isinstance(j, dict) and j.get("k") == 1 and j.get("b") == 2 and j.get("c") == -25 and isinstance(j.get("n"), int):
-                self.add_result(j, user, path, uploaded=True)
+                # a GPU program's line (hyprp) names its person and card itself: "user" (the notebook's NAME,
+                # ANONYMOUS when none) and "gpu_uuid"; credit "user - GPU-…" rather than the upload's handle
+                uuid = str(j.get("gpu_uuid") or "").strip()
+                if isinstance(j.get("program"), str) and COMPUTER_ID.match(uuid):
+                    # the team notebook writes "NAME - GPU-…"; the person is the part before the computer
+                    name = name_only(" ".join(str(j.get("user") or "").split()))
+                    name = name if name and len(name) <= 40 and USER_NAME.match(name) else "ANONYMOUS"
+                    self.add_result(j, with_computer(name, uuid), path, uploaded=True)
+                else:
+                    self.add_result(j, user, path, uploaded=True)
 
     def add_result(self, j, user, where, uploaded=False, live=False):
         n = j["n"]
@@ -1360,9 +1391,13 @@ class Archive:
             self.notes.add("result for an even n or n >= 10^7", f"{where}: n = {n}")
             return
         prog = j.get("program") or {}
-        prog_label = " ".join(str(x) for x in (prog.get("name", "?"), prog.get("version", ""))).strip()
-        if prog.get("build"):
-            prog_label += f" b{prog['build']}"
+        if isinstance(prog, str):
+            # hyprp names itself with a plain string ("hyprp"), plus "version" when it has one
+            prog_label = " ".join(x for x in (prog.strip() or "?", str(j.get("version") or "").strip()) if x)
+        else:
+            prog_label = " ".join(str(x) for x in (prog.get("name", "?"), prog.get("version", ""))).strip()
+            if prog.get("build"):
+                prog_label += f" b{prog['build']}"
         pid = self.index(self.programs, prog_label)
         uid = self.index(self.users, user)
         if wt == "P-1":

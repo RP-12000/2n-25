@@ -180,6 +180,7 @@
     if (!Number.isInteger(n) || n < 5 || n >= 1e7) return 'n must be a whole number from 5 to 9,999,999';
     if (n % 2 === 0) return 'even n never gives a prime';
     var prog = j.program;
+    if (typeof prog === 'string') return gpuLineError(j, n);
     if (!prog || typeof prog !== 'object' || typeof prog.name !== 'string' || typeof prog.version !== 'string') return 'no program name and version';
     if (typeof j.timestamp !== 'string' || !STAMP.test(j.timestamp)) return 'no timestamp';
     if (typeof j['security-code'] !== 'string' || !HEX8.test(j['security-code'])) return 'no security-code';
@@ -209,6 +210,36 @@
       return '';
     }
     return null; // another work type: ignored, not an error
+  }
+  /* A line of hyprp's results.jsonl: the same checks as the Worker's checkGpuLine. Its checksum (CRC-32 of
+     "hyprp,<version>,1,2,<n>,<c>,<status>,<RES64>,<RES2048>") guards against slips; a line without one is refused.
+     The credit comes from the line: "user" and "gpu_uuid". */
+  function gpuLineError(j, n) {
+    if (!/^(hyprp|dfprp)$/i.test(j.program)) return null;
+    if (!/^PRP(-\d+)?$/.test(String(j.worktype))) return null;
+    if (typeof j.timestamp !== 'string' || !STAMP.test(j.timestamp)) return 'no timestamp';
+    if (j.status !== 'C' && j.status !== 'P') return 'PRP status must be C or P';
+    if (typeof j.res64 !== 'string' || !HEX16.test(j.res64)) return 'no 64-bit residue';
+    if (typeof j.checksum !== 'string' || !HEX8.test(j.checksum)) return 'no checksum (results from dfprp v1.0 or later carry one)';
+    if (typeof j.res2048 !== 'string' || !/^[0-9A-Fa-f]{512}$/.test(j.res2048)) return 'no 2048-bit residue';
+    var v = typeof j.version === 'number' && Number.isInteger(j.version) ? j.version.toFixed(1) : String(j.version);
+    var sum = crc32(['hyprp', v, 1, 2, n, j.c, j.status, j.res64.toUpperCase(), j.res2048.toUpperCase()].join(','));
+    if (sum !== j.checksum.toUpperCase()) return 'checksum does not match the result (was the line edited?)';
+    if (j.status === 'P') {
+      var sp = S.smallestFactor(n, 100000);
+      if (sp) return 'reports a probable prime, but ' + fmt(sp) + ' divides 2^' + n + ' − 25';
+    }
+    return '';
+  }
+  var CRC_TABLE = null;
+  function crc32(s) {
+    if (!CRC_TABLE) {
+      CRC_TABLE = [];
+      for (var i = 0; i < 256; i++) { var c = i; for (var k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; CRC_TABLE[i] = c >>> 0; }
+    }
+    var crc = 0xffffffff;
+    for (var m = 0; m < s.length; m++) crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ s.charCodeAt(m)) & 0xff];
+    return ('0000000' + ((crc ^ 0xffffffff) >>> 0).toString(16).toUpperCase()).slice(-8);
   }
   function check(text) {
     var o = { lines: [], rejected: [], other: 0, nonJson: 0, broken: 0, dup: 0, prpC: 0, prpP: 0, pm1: 0, factors: 0, primes: [], nMin: Infinity, nMax: 0, suspect: 0 };
@@ -266,7 +297,7 @@
           (p.dup ? ' ' + fmt(p.dup) + ' repeated line' + (p.dup === 1 ? '' : 's') + ' left out.' : '') + '</div>');
       }
       if (p.primes.length) {
-        h.push('<div class="msg prime"><b>This reports a probable prime: n = ' + p.primes.map(fmt).join(', ') + '.</b> After the upload you can send the proof file for it.</div>');
+        h.push('<div class="msg prime"><b>This reports a probable prime: n = ' + p.primes.map(fmt).join(', ') + '.</b> The project re-tests it before it is listed; no proof file is needed.</div>');
       }
       if (p.suspect) h.push('<div class="msg">' + fmt(p.suspect) + ' line' + (p.suspect === 1 ? ' has' : 's have') + ' a non-zero error-code; they are kept but marked for a double check.</div>');
       var ignored = [];
@@ -358,7 +389,10 @@
         h.push('<div class="msg err"><b>The server refused ' + fmt(total.rejected.length) + ' line' + (total.rejected.length === 1 ? '' : 's') + ':</b><ul>' +
           total.rejected.slice(0, 8).map(function (r) { return '<li>' + (r.n ? 'n = ' + fmt(r.n) + ': ' : '') + esc(r.reason) + '</li>'; }).join('') + '</ul></div>');
       }
-      total.primes.forEach(function (x) { h.push(proofBox(x)); });
+      // no proof file is asked for (Anna, 2026-11-27): a reported probable prime is re-tested by the project
+      total.primes.forEach(function (x) {
+        h.push('<div class="msg prime"><b>n = ' + fmt(x.n) + ' reported a probable prime.</b> Thank you! The project re-tests it before it is listed.</div>');
+      });
       el('up-result').innerHTML = h.join('');
       Array.prototype.forEach.call(el('up-result').querySelectorAll('input[data-token]'), function (inp) {
         inp.addEventListener('change', function () { sendProof(inp); });
@@ -412,6 +446,8 @@
   var S = window.Site, fmt = S.fmt, esc = S.esc;
   var el = function (id) { return document.getElementById(id); };
   var HANDLE = /^[\p{L}\p{N} ._\-()[\]+#]+$/u, HANDLE_KEY = '2n25.handle', COMPUTER_KEY = '2n25.computer';
+  // what Mass Prime Siever 14.1 writes as "computer": GPU-<uuid>, PCI-<address>, or a host name
+  var COMPUTER = /^(GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|PCI-[0-9a-f:.]{1,24}|[A-Za-z0-9][A-Za-z0-9._-]{0,62})$/i;
   var MAX_N = 1e7, SHOW = 8, STEP = 5000;
   var L = { textBytes: 3 * 1024 * 1024, factorsPerCheck: 150, factorsPerCheckBig: 40, maxP: 1125899906842624, uploadsPerDay: 20 };
   var P50 = 1125899906842624; // from 2^50 up the server checks factors with BigInt, fewer per step
@@ -451,6 +487,10 @@
   el('tf-clear').addEventListener('click', function () {
     if (tf.busy) return;
     tf.files = {}; tf.plan = null; tf.sent = {}; tf.run++; fileInput.value = '';
+    if (computerInput.readOnly) {
+      computerInput.readOnly = handleInput.readOnly = false;
+      computerInput.value = recall(COMPUTER_KEY); handleInput.value = recall(HANDLE_KEY);
+    }
     el('tf-preview').innerHTML = ''; el('tf-result').innerHTML = ''; setProgress('', null);
     refresh();
   });
@@ -463,6 +503,7 @@
     return fetch(tf.endpoint + '/status', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
       var t = j && j.limits && j.limits.tf;
       tf.open = Boolean(j && j.ok && j.accepting && t && j.sieve !== false);
+      tf.computerOk = Boolean(j && j.computer);   // an older Worker drops a computer sent beside the handle
       if (t) ['textBytes', 'factorsPerCheck', 'factorsPerCheckBig', 'maxP', 'uploadsPerDay'].forEach(function (k) { if (t[k] > 0) L[k] = t[k]; });
       el('tf-status').textContent = tf.open ? 'open · p below ' + maxP() : t ? 'not accepting uploads right now' : 'not open yet';
       if (!tf.open) el('tf-result').innerHTML = msg('info', 'The upload server does not take sieve output yet. Until it does, attach <code>results.json</code> and <code>siever.log</code> to a ' + issueLink() + '.');
@@ -641,7 +682,21 @@
       close(x.N1);
     });
     var checks = parts.reduce(function (s, p) { return s + slices(p.text, perCheck(p.head)).length; }, 0);
-    tf.plan = { ok: !bad.length, parts: parts, log: log, checks: checks };
+    // Mass Prime Siever 14.1 and later name the machine in results.json ("computer": the GPU's UUID, a PCI
+    // address, or the host name); one such name for every run fills the Computer field by itself
+    // and the person: "user", the name typed into the notebook (ANONYMOUS when none was given)
+    var computers = {}, users = {};
+    results.forEach(function (r) {
+      var c = String(r.x.e.computer || '').trim(), u = String(r.x.e.user || '').replace(/\s+/g, ' ').trim();
+      computers[COMPUTER.test(c) ? c : ''] = 1;
+      users[u && u.length <= 40 && HANDLE.test(u) ? u : 'ANONYMOUS'] = 1;
+    });
+    var named = Object.keys(computers), computer = tf.computerOk && named.length === 1 && named[0] ? named[0] : '';
+    var people = Object.keys(users), user = computer ? (people.length === 1 ? people[0] : 'ANONYMOUS') : '';
+    tf.plan = { ok: !bad.length, parts: parts, log: log, checks: checks, computer: computer, user: user };
+    if (computer) { computerInput.value = computer; handleInput.value = user; }
+    else if (computerInput.readOnly) { computerInput.value = recall(COMPUTER_KEY); handleInput.value = recall(HANDLE_KEY); }   // the previous file's were not typed
+    computerInput.readOnly = handleInput.readOnly = Boolean(computer);
 
     var rows = results.map(function (r) {
       var x = r.x, want = expected(r.odd, Math.max(x.P0, 2), x.P1), low = want !== null && want >= 100 && r.factors < 0.8 * want;
@@ -652,6 +707,7 @@
     h.push('<div class="scroll-x"><table class="data"><thead><tr><th class="text">Run</th><th>p</th><th>n</th><th class="r">Odd n</th><th class="r">With a factor</th>' +
       '<th class="r">Factors</th><th class="r">Expected</th></tr></thead><tbody>' + rows + '</tbody></table></div>');
     var notes = [];
+    if (computer) notes.push('Credit from results.json: <b>' + esc(user) + '</b>, computer <code>' + esc(computer) + '</code>.');
     if (log) notes.push('siever.log: ' + esc(log.program || 'program not named') + (log.wall_s ? ', run time ' + duration(log.wall_s) : '') + '.');
     else notes.push('No siever.log; add it to record the run time.');
     if (results.some(function (r) { return r.x.cut; })) notes.push('* n from 10<sup>7</sup> up is outside this project and is left out.');
@@ -714,15 +770,18 @@
     if (!plan || !plan.ok || tf.busy || !tf.open) return;
     // the upload carries one name, "Name - Computer"; the site shows the two parts in separate columns
     var name = handleInput.value.replace(/\s+/g, ' ').trim(), computer = computerInput.value.replace(/\s+/g, ' ').trim();
-    var handle = computer ? (name || 'anonymous') + ' - ' + computer : name;
-    var wrong = name && !HANDLE.test(name) ? handleInput : computer && !HANDLE.test(computer) ? computerInput : handle.length > 40 ? computerInput : null;
+    // a computer named by results.json (a GPU UUID is 40 characters by itself) travels on its own; the handle is the name
+    var own = plan.computer || '';
+    if (own) name = plan.user || 'ANONYMOUS';   // both come from results.json, not from the fields
+    var handle = own ? name : computer ? (name || 'anonymous') + ' - ' + computer : name;
+    var wrong = name && !HANDLE.test(name) ? handleInput : !own && computer && !HANDLE.test(computer) ? computerInput : handle.length > 40 ? (own ? handleInput : computerInput) : null;
     if (wrong) {
-      el('tf-result').innerHTML = msg('err', 'The name for credit and the computer may use letters, digits, spaces and . _ - ( ) [ ] + #, at most 40 characters for both together.');
+      el('tf-result').innerHTML = msg('err', own ? 'The name for credit may use letters, digits, spaces and . _ - ( ) [ ] + #, at most 40 characters.'
+        : 'The name for credit and the computer may use letters, digits, spaces and . _ - ( ) [ ] + #, at most 40 characters for both together.');
       wrong.focus();
       return;
     }
-    store(HANDLE_KEY, name);
-    store(COMPUTER_KEY, computer);
+    if (!own) { store(HANDLE_KEY, name); store(COMPUTER_KEY, computer); }
     var note = noteInput.value.trim().slice(0, 500), log = plan.log || {};
     var todo = [], doneChecks = 0;
     plan.parts.forEach(function (p, i) { if (!tf.sent[i]) todo.push(i); });
@@ -736,7 +795,7 @@
       if (k >= todo.length) return done();
       var idx = todo[k], p = plan.parts[idx], label = todo.length > 1 ? 'Upload ' + (k + 1) + ' of ' + todo.length + ': ' : '';
       var fd = new FormData();
-      fd.append('meta', JSON.stringify({ head: p.head, handle: handle, note: note, timestamp: p.timestamp,
+      fd.append('meta', JSON.stringify({ head: p.head, handle: handle, computer: own, note: note, timestamp: p.timestamp,
         run: { program: log.program || '', start: log.start || '', end: log.end || '', wall_s: log.wall_s || 0 },
         counts: { odd: p.odd, prp: p.odd - p.entries } }));
       fd.append('factors', new Blob([p.text], { type: 'text/plain' }), 'factors.txt');

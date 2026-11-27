@@ -55,6 +55,9 @@ const HEX8 = /^[0-9A-Fa-f]{8}$/;
 const HEX16 = /^[0-9A-Fa-f]{16}$/;
 const TIMESTAMP = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 const HANDLE = /^[\p{L}\p{N} ._\-()[\]+#]+$/u;
+// the machine a result came from, as the programs name it themselves: a GPU's UUID (as nvidia-smi -L prints it),
+// a PCI address when the driver reports no UUID, or a host name (Mass Prime Siever 14.1 "computer", hyprp "gpu_uuid")
+const COMPUTER = /^(GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|PCI-[0-9a-f:.]{1,24}|[A-Za-z0-9][A-Za-z0-9._-]{0,62})$/i;
 const OPEN_CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -70,7 +73,8 @@ export default {
       if (path.startsWith('/admin/')) return await admin(request, env, url, path);
       if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: OPEN_CORS });
       if (path === '/' || path === '/status') {
-        return reply({ ok: true, service: '2^n-25 result upload', accepting: Boolean(env.SUBMISSIONS), sieve: Boolean(env.SUBMISSIONS && env.ADMIN_TOKEN), limits: LIMITS });
+        // computer: this Worker keeps the computer a program names itself (sieve uploads), so the page may send it
+        return reply({ ok: true, service: '2^n-25 result upload', accepting: Boolean(env.SUBMISSIONS), sieve: Boolean(env.SUBMISSIONS && env.ADMIN_TOKEN), computer: true, limits: LIMITS });
       }
       if (path === '/submit') {
         if (request.method !== 'POST') return reply({ ok: false, errors: ['Use POST'] }, 405);
@@ -240,6 +244,7 @@ export function checkLine(j) {
   if (n % 2 === 0) return { error: 'even n: 2^n-25 = (2^(n/2)-5)(2^(n/2)+5) is never prime' };
   const wt = j.worktype;
   if (typeof wt !== 'string') return { error: 'no worktype' };
+  if (typeof j.program === 'string') return checkGpuLine(j, n, wt);
   const prog = j.program;
   if (!prog || typeof prog !== 'object' || typeof prog.name !== 'string' || typeof prog.version !== 'string') {
     return { error: 'no program name and version' };
@@ -279,6 +284,44 @@ export function checkLine(j) {
   }
 
   return { skip: `worktype ${wt} is not collected` };
+}
+
+/** A line of hyprp's results.jsonl (dfprp v1.0+): {n, k, b, c, worktype: "PRP-3", status, res64, res2048, program: "hyprp",
+ *  version, gpu_uuid, checksum, user, timestamp, ...}. Its "checksum" is the CRC-32 (zlib/IEEE, 8 upper-case hex digits)
+ *  of "hyprp,<version>,1,2,<n>,<c>,<status>,<RES64>,<RES2048>": it guards against slips, not against a forged line.
+ *  A line without it (written before dfprp v1.0 had one) is refused. No proof file is asked for. */
+export function checkGpuLine(j, n, wt) {
+  if (!/^(hyprp|dfprp)$/i.test(j.program)) return { skip: `program ${String(j.program).slice(0, 20)} is not collected` };
+  if (!/^PRP(-\d+)?$/.test(wt)) return { skip: `worktype ${wt} is not collected` };
+  if (typeof j.timestamp !== 'string' || !TIMESTAMP.test(j.timestamp)) return { error: 'no timestamp' };
+  if (j.status !== 'C' && j.status !== 'P') return { error: 'PRP status must be C or P' };
+  if (typeof j.res64 !== 'string' || !HEX16.test(j.res64)) return { error: 'no 64-bit residue' };
+  if (typeof j.checksum !== 'string' || !HEX8.test(j.checksum)) return { error: 'no checksum (results from dfprp v1.0 or later carry one)' };
+  if (typeof j.res2048 !== 'string' || !/^[0-9A-Fa-f]{512}$/.test(j.res2048)) return { error: 'no 2048-bit residue' };
+  if (gpuChecksum(j) !== j.checksum.toUpperCase()) return { error: 'checksum does not match the result' };
+  return { rec: { kind: 'prp', n, status: j.status, prime: j.status === 'P', md5: '', suspect: false } };
+}
+
+/** hyprp's checksum of a result line (see checkGpuLine). */
+export function gpuChecksum(j) {
+  const v = typeof j.version === 'number' && Number.isInteger(j.version) ? j.version.toFixed(1) : String(j.version);
+  return crc32(['hyprp', v, 1, 2, j.n, j.c, j.status, String(j.res64).toUpperCase(), String(j.res2048 || '').toUpperCase()].join(','));
+}
+
+let CRC_TABLE = null;
+/** CRC-32 (zlib/IEEE) of an ASCII string, as 8 upper-case hex digits. */
+export function crc32(s) {
+  if (!CRC_TABLE) {
+    CRC_TABLE = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+      let c = i;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      CRC_TABLE[i] = c >>> 0;
+    }
+  }
+  let crc = 0xffffffff;
+  for (let i = 0; i < s.length; i++) crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ s.charCodeAt(i)) & 0xff];
+  return ((crc ^ 0xffffffff) >>> 0).toString(16).toUpperCase().padStart(8, '0');
 }
 
 /** True when p divides 2^n - 25. */
@@ -339,8 +382,10 @@ async function tfBegin(request, env) {
     return reply({ ok: false, errors: [`The credit name may use letters, digits, spaces and . _ - ( ) [ ] + # (at most ${LIMITS.handleChars} characters).`] }, 400);
   }
   const run = meta.run && typeof meta.run === 'object' ? meta.run : {};
+  const computer = String(meta.computer || '').trim();
   const info = {
     handle: handleRaw || 'anonymous',
+    computer: COMPUTER.test(computer) ? computer : '',
     note: String(meta.note || '').slice(0, LIMITS.noteChars),
     timestamp: String(meta.timestamp || '').slice(0, 40),
     run: {
